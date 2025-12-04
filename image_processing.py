@@ -3,42 +3,198 @@ Image processing functions
 Contains all image transformation and processing operations
 """
 
+from typing import Optional
 from PIL import Image
 import numpy as np
 from scipy.ndimage import gaussian_filter, median_filter, laplace, sobel
 
+# image_processing.py
+from PIL import Image
+import numpy as np
 
-def to_grayscale(image):
+
+
+# -------------------------
+# Helper: Otsu
+# -------------------------
+def otsu_threshold(arr: np.ndarray) -> int:
     """
-    Convert image to grayscale
-    
+    Compute Otsu threshold for a 2D uint8 array. Returns int in [0,255].
+    """
+    flat = arr.ravel()
+    counts, _ = np.histogram(flat, bins=256, range=(0,256))
+    total = flat.size
+    sum_total = (np.arange(256) * counts).sum()
+    sum_b = 0.0
+    w_b = 0.0
+    max_var = 0.0
+    threshold = 0
+    for i in range(256):
+        w_b += counts[i]
+        if w_b == 0:
+            continue
+        w_f = total - w_b
+        if w_f == 0:
+            break
+        sum_b += i * counts[i]
+        m_b = sum_b / w_b
+        m_f = (sum_total - sum_b) / w_f
+        var_between = w_b * w_f * (m_b - m_f) ** 2
+        if var_between > max_var:
+            max_var = var_between
+            threshold = i
+    return int(threshold)
+
+def _between_var_from_counts(counts: np.ndarray, t: int) -> float:
+    """Compute between-class variance given histogram counts and threshold t (counts length 256)."""
+    counts = counts.astype(np.float64)
+    w_b = counts[: t+1].sum()
+    w_f = counts[t+1 :].sum()
+    if w_b == 0 or w_f == 0:
+        return 0.0
+    mu_b = (np.arange(0, t+1) * counts[: t+1]).sum() / w_b
+    mu_f = (np.arange(t+1, 256) * counts[t+1 :]).sum() / w_f
+    return w_b * w_f * (mu_b - mu_f) ** 2
+
+# -------------------------
+# Public: to_grayscale (backwards-compatible name)
+# -------------------------
+def to_grayscale(image: Image.Image) -> Image.Image:
+    """
+    Convert image to grayscale using luminance formula (returns RGB image for compatibility with UI).
+    Y = 0.2126 R + 0.7152 G + 0.0722 B
+    """
+    if image.mode == 'L':
+        # convert to RGB to keep UI consistent (3 channels)
+        return image.convert("RGB")
+
+    arr = np.array(image.convert('RGB'), dtype=np.float32)
+    r, g, b = arr[..., 0], arr[..., 1], arr[..., 2]
+    gray = 0.2126 * r + 0.7152 * g + 0.0722 * b
+    gray = np.clip(gray, 0, 255).astype(np.uint8)
+    # Return RGB image so UI that expects 3 channels doesn't break
+    return Image.fromarray(gray, mode='L').convert("RGB")
+
+# -------------------------
+# Enhanced: to_binary_info (returns details)
+# -------------------------
+def to_binary_info(image: Image.Image, method: str = 'auto'):
+    """
+    Produce binary image and info.
     Args:
-        image: PIL Image object
-        
+      method: 'auto' | 'avg' | 'otsu'
     Returns:
-        Grayscale PIL Image object
+      (binary_image (PIL.Image, mode 'RGB'), threshold (float), chosen_method (str), reason (optional str))
     """
-    if image:
-        return image.convert("L").convert("RGB")
-    return None
+    gray = image.convert('L')
+    arr = np.array(gray, dtype=np.uint8)
 
+    # average threshold
+    avg_t = float(arr.mean())
+    # otsu threshold
+    otsu_t = float(otsu_threshold(arr))
 
-def to_binary(image, threshold=128):
+    # binary arrays
+    avg_bin_arr = (arr >= avg_t).astype(np.uint8) * 255
+    otsu_bin_arr = (arr >= otsu_t).astype(np.uint8) * 255
+
+    chosen = method
+    reason = ""
+    if method == 'auto':
+        counts, _ = np.histogram(arr.ravel(), bins=256, range=(0,256))
+        bv_avg = _between_var_from_counts(counts, int(round(avg_t)))
+        bv_otsu = _between_var_from_counts(counts, int(round(otsu_t)))
+        # heuristic: prefer otsu if its between-class variance > 1.1 * avg's
+        if bv_otsu > 1.1 * bv_avg:
+            chosen = 'otsu'
+        else:
+            chosen = 'avg'
+        reason = f"bv_otsu={bv_otsu:.1f}, bv_avg={bv_avg:.1f}"
+    else:
+        reason = f"forced method={method}"
+
+    if chosen == 'otsu':
+        img = Image.fromarray(otsu_bin_arr, mode='L').convert("RGB")
+        return img, otsu_t, 'otsu', reason
+    else:
+        img = Image.fromarray(avg_bin_arr, mode='L').convert("RGB")
+        return img, avg_t, 'avg', reason
+
+# -------------------------
+# Backwards-compatible simple function
+# -------------------------
+def to_binary(image: Image.Image, threshold: Optional[int] = None) -> Image.Image:
     """
-    Convert image to binary (black and white)
+    Backwards-compatible to_binary used by app.py.
+    - If `threshold` is an int (0-255): use it (manual mode).
+    - If `threshold` is None: perform auto selection between Average and Otsu.
+
+    Returns a PIL.Image (RGB) — safe to display in Streamlit.
+    """
+    if image is None:
+        raise ValueError("to_binary: image is None")
+
+    # ensure grayscale array for computations
+    gray = image.convert('L')
+    arr = np.array(gray, dtype=np.uint8)
+
+    # Manual threshold path
+    if threshold is not None:
+        t = int(max(0, min(255, int(round(threshold)))))
+        bin_arr = (arr >= t).astype(np.uint8) * 255
+        return Image.fromarray(bin_arr, mode='L').convert("RGB")
+
+    # Auto-selection path: compute both and choose by between-class variance
+    # average
+    avg_t = float(arr.mean())
+    avg_bin_arr = (arr >= avg_t).astype(np.uint8) * 255
+    # otsu
+    otsu_t = otsu_threshold(arr)
+    otsu_bin_arr = (arr >= otsu_t).astype(np.uint8) * 255
+
+    counts, _ = np.histogram(arr.ravel(), bins=256, range=(0,256))
+    bv_avg = _between_var_from_counts(counts, int(round(avg_t)))
+    bv_otsu = _between_var_from_counts(counts, int(round(otsu_t)))
+
+    # Heuristic: choose Otsu if it gives a noticeably higher between-class variance
+    chosen = 'otsu' if (bv_otsu > 1.1 * bv_avg) else 'avg'
+
+    if chosen == 'otsu':
+        return Image.fromarray(otsu_bin_arr, mode='L').convert("RGB")
+    else:
+        return Image.fromarray(avg_bin_arr, mode='L').convert("RGB")
+
+# def to_grayscale(image):
+#     """
+#     Convert image to grayscale
     
-    Args:
-        image: PIL Image object
-        threshold: Threshold value (0-255) for binary conversion
+#     Args:
+#         image: PIL Image object
         
-    Returns:
-        Binary PIL Image object
-    """
-    if image:
-        gray = image.convert("L")
-        binary = gray.point(lambda x: 255 if x > threshold else 0, mode='1')
-        return binary.convert("RGB")
-    return None
+#     Returns:
+#         Grayscale PIL Image object
+#     """
+#     if image:
+#         return image.convert("L").convert("RGB")
+#     return None
+
+
+# def to_binary(image, threshold=128):
+#     """
+#     Convert image to binary (black and white)
+    
+#     Args:
+#         image: PIL Image object
+#         threshold: Threshold value (0-255) for binary conversion
+        
+#     Returns:
+#         Binary PIL Image object
+#     """
+#     if image:
+#         gray = image.convert("L")
+#         binary = gray.point(lambda x: 255 if x > threshold else 0, mode='1')
+#         return binary.convert("RGB")
+#     return None
 
 
 def translate(image, tx, ty):
