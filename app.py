@@ -17,7 +17,7 @@ from ui_components import apply_custom_css, render_footer, initialize_session_st
 from utils import load_image, display_image_info
 from image_processing import (
     to_grayscale, to_binary, to_binary_info,
-    translate, scale, rotate, shear_x, shear_y,
+    apply_affine, translate, scale, rotate, shear_x, shear_y,
     nearest_neighbor_interpolation, bilinear_interpolation, bicubic_interpolation,
     show_histogram, histogram_equalization,
     gaussian_filter_func, median_filter_func,
@@ -34,6 +34,18 @@ st.set_page_config(
 
 apply_custom_css()
 initialize_session_state()
+
+# Helper to display images across Streamlit versions that may
+# accept either `use_container_width` or the older `use_column_width`.
+def safe_st_image(obj, use_container_width=True, **kwargs):
+    try:
+        return st.image(obj, use_container_width=use_container_width, **kwargs)
+    except TypeError:
+        try:
+            return st.image(obj, use_column_width=use_container_width, **kwargs)
+        except TypeError:
+            # Last resort: call without width parameter
+            return st.image(obj, **kwargs)
 
 st.title("Image Processing Application")
 st.markdown("---")
@@ -100,7 +112,7 @@ left_col, right_col = st.columns(2)
 with left_col:
     st.subheader("Original Image")
     if st.session_state.get("original_image") is not None:
-        st.image(st.session_state.original_image, use_container_width=True)
+        safe_st_image(st.session_state.original_image, use_container_width=True)
         with st.expander("Image Information"):
             try:
                 st.markdown(display_image_info(st.session_state.original_image))
@@ -114,7 +126,7 @@ with right_col:
     st.subheader("Processed Image")
     if st.session_state.get("processed_image") is not None:
         try:
-            st.image(st.session_state.processed_image, use_container_width=True)
+            safe_st_image(st.session_state.processed_image, use_container_width=True)
         except Exception as e:
             st.error("Failed to render processed image:")
             st.exception(e)
@@ -228,19 +240,19 @@ with st.expander("Basic Operations", expanded=True):
     with comp_col1:
         st.markdown("**Original**")
         if orig is not None:
-            st.image(orig, use_container_width=True)
+            safe_st_image(orig, use_container_width=True)
         else:
             st.info("No original")
     with comp_col2:
         st.markdown("**Grayscale**")
         if gray is not None:
-            st.image(gray, use_container_width=True)
+            safe_st_image(gray, use_container_width=True)
         else:
             st.info("Grayscale not computed (click Grayscale)")
     with comp_col3:
         st.markdown("**Binary**")
         if bin_img is not None:
-            st.image(bin_img, use_container_width=True)
+            safe_st_image(bin_img, use_container_width=True)
             # show method & threshold if present
             method = st.session_state.get("member2_bin_method", "unknown")
             thresh = st.session_state.get("member2_bin_thresh", None)
@@ -261,7 +273,7 @@ with st.expander("Affine Transformations"):
         if st.button("Translate", key="translate_btn"):
             if st.session_state.get("original_image") is not None:
                 try:
-                    st.session_state.processed_image = translate(st.session_state.original_image, tx, ty)
+                    st.session_state.processed_image = apply_affine(st.session_state.original_image, 'translate', tx=tx, ty=ty)
                     st.success("Translate applied.")
                 except Exception as e:
                     st.error("Translate failed:")
@@ -275,7 +287,7 @@ with st.expander("Affine Transformations"):
         if st.button("Scale", key="scale_btn"):
             if st.session_state.get("original_image") is not None:
                 try:
-                    st.session_state.processed_image = scale(st.session_state.original_image, scale_x, scale_y)
+                    st.session_state.processed_image = apply_affine(st.session_state.original_image, 'scale', sx=scale_x, sy=scale_y)
                     st.success("Scale applied.")
                 except Exception as e:
                     st.error("Scale failed:")
@@ -288,13 +300,121 @@ with st.expander("Affine Transformations"):
         if st.button("Rotate", key="rotate_btn"):
             if st.session_state.get("original_image") is not None:
                 try:
-                    st.session_state.processed_image = rotate(st.session_state.original_image, angle)
+                    st.session_state.processed_image = apply_affine(st.session_state.original_image, 'rotate', angle=angle)
                     st.success("Rotate applied.")
                 except Exception as e:
                     st.error("Rotate failed:")
                     st.exception(e)
             else:
                 st.warning("Please upload an image first")
+
+    # --- Shear (X & Y) ---
+    st.markdown("---")
+    s1, s2 = st.columns(2)
+    with s1:
+        st.write("**Shear X (horizontal)**")
+        shear_x_factor = st.slider("Shear X factor", -1.0, 1.0, 0.0, 0.01, key="shear_x_factor")
+        if st.button("Apply X-direction Shear", key="shearx_btn"):
+            if st.session_state.get("original_image") is not None:
+                try:
+                    st.session_state.processed_image = apply_affine(st.session_state.original_image, 'shear_x', factor=shear_x_factor)
+                    st.success("X-direction shear applied.")
+                except Exception as e:
+                    st.error("X-direction shear failed:")
+                    st.exception(e)
+            else:
+                st.warning("Please upload an image first")
+    with s2:
+        st.write("**Shear Y (vertical)**")
+        shear_y_factor = st.slider("Shear Y factor", -1.0, 1.0, 0.0, 0.01, key="shear_y_factor")
+        if st.button("Apply Y-direction Shear", key="sheary_btn"):
+            if st.session_state.get("original_image") is not None:
+                try:
+                    st.session_state.processed_image = apply_affine(st.session_state.original_image, 'shear_y', factor=shear_y_factor)
+                    st.success("Y-direction shear applied.")
+                except Exception as e:
+                    st.error("Y-direction shear failed:")
+                    st.exception(e)
+            else:
+                st.warning("Please upload an image first")
+
+    # --- Multi-transformation queue ---
+    st.markdown("---")
+    st.subheader("Multiple Transformations")
+
+    # Initialize session state for queued operations
+    if 'queued_ops' not in st.session_state:
+        st.session_state.queued_ops = []
+
+    # Create checkboxes to queue operations
+    qc1, qc2, qc3, qc4, qc5 = st.columns(5)
+    with qc1:
+        queue_translate = st.checkbox("Translate", value=False, key="queue_translate")
+    with qc2:
+        queue_scale = st.checkbox("Scale", value=False, key="queue_scale")
+    with qc3:
+        queue_rotate = st.checkbox("Rotate", value=False, key="queue_rotate")
+    with qc4:
+        queue_shear_x = st.checkbox("Shear X", value=False, key="queue_shear_x")
+    with qc5:
+        queue_shear_y = st.checkbox("Shear Y", value=False, key="queue_shear_y")
+
+    # Build queue based on selected checkboxes
+    current_queue = []
+    if queue_translate:
+        current_queue.append(('translate', {'tx': tx, 'ty': ty}))
+    if queue_scale:
+        current_queue.append(('scale', {'sx': scale_x, 'sy': scale_y}))
+    if queue_rotate:
+        current_queue.append(('rotate', {'angle': angle}))
+    if queue_shear_x:
+        current_queue.append(('shear_x', {'factor': shear_x_factor}))
+    if queue_shear_y:
+        current_queue.append(('shear_y', {'factor': shear_y_factor}))
+
+    # Display current queue
+    if current_queue:
+        st.info(f"Queue: {' → '.join([op[0] for op in current_queue])}")
+
+    # Apply All Transformations button
+    apply_all_col = st.columns(1)[0]
+    if apply_all_col.button("Apply All Transformations", key="apply_all_transforms", use_container_width=True):
+        if st.session_state.get("original_image") is not None:
+            if current_queue:
+                try:
+                    result_image = st.session_state.original_image
+                    for op_name, op_params in current_queue:
+                        result_image = apply_affine(result_image, op_name, **op_params)
+                    st.session_state.processed_image = result_image
+                    st.success(f"Applied {len(current_queue)} transformation(s) in sequence!")
+                except Exception as e:
+                    st.error("Multi-transformation failed:")
+                    st.exception(e)
+            else:
+                st.warning("Please select at least one transformation to apply.")
+        else:
+            st.warning("Please upload an image first")
+
+    # Preview area inside the transformations expander: show original vs transformed
+    st.markdown("---")
+    st.subheader("Transform Preview")
+    pv1, pv2 = st.columns(2)
+    with pv1:
+        st.markdown("**Original**")
+        if st.session_state.get("original_image") is not None:
+            safe_st_image(st.session_state.original_image, use_container_width=True)
+        else:
+            st.info("No original image")
+    with pv2:
+        st.markdown("**Transformed**")
+        if st.session_state.get("processed_image") is not None:
+            try:
+                safe_st_image(st.session_state.processed_image, use_container_width=True)
+            except Exception as e:
+                st.error("Could not show transformed image:")
+                st.exception(e)
+        else:
+            st.info("No transformed image — apply an operation above")
 
 with st.expander("Image Interpolation"):
     c1, c2, c3 = st.columns(3)

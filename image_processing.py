@@ -332,6 +332,36 @@ def bicubic_interpolation(image, new_size):
     return None
 
 
+# -------------------------
+# Affine transform operations
+# -------------------------
+def apply_affine(image: Image.Image, operation: str, **kwargs) -> Image.Image:
+    if image is None:
+        raise ValueError("apply_affine: image is None")
+
+    op = operation.lower()
+    if op == 'translate':
+        tx = int(kwargs.get('tx', kwargs.get('x', 0)))
+        ty = int(kwargs.get('ty', kwargs.get('y', 0)))
+        return translate(image, tx, ty)
+    elif op == 'scale':
+        sx = float(kwargs.get('sx', kwargs.get('scale_x', kwargs.get('scale', 1.0))))
+        sy = float(kwargs.get('sy', kwargs.get('scale_y', kwargs.get('scale', 1.0))))
+        return scale(image, sx, sy)
+    elif op == 'rotate':
+        angle = float(kwargs.get('angle', kwargs.get('deg', 0)))
+        return rotate(image, angle)
+    elif op in ('shear_x', 'shearx', 'shear-x'):
+        f = float(kwargs.get('factor', kwargs.get('shear_x_factor', kwargs.get('shear', 0.0))))
+        return shear_x(image, f)
+    elif op in ('shear_y', 'sheary', 'shear-y'):
+        f = float(kwargs.get('factor', kwargs.get('shear_y_factor', kwargs.get('shear', 0.0))))
+        return shear_y(image, f)
+    else:
+        raise ValueError(f"Unknown affine operation: {operation}")
+
+
+
 def show_histogram(image):
     """
     Calculate and return histogram data
