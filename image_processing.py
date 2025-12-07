@@ -196,7 +196,9 @@ def to_binary(image: Image.Image, threshold: Optional[int] = None) -> Image.Imag
 #         return binary.convert("RGB")
 #     return None
 
-
+# -------------------------
+# Affine transform operations
+# -------------------------
 def translate(image, tx, ty):
     """
     Translate (shift) image
@@ -284,6 +286,34 @@ def shear_y(image, shear_factor):
     return None
 
 
+def apply_affine(image: Image.Image, operation: str, **kwargs) -> Image.Image:
+    if image is None:
+        raise ValueError("apply_affine: image is None")
+
+    op = operation.lower()
+    if op == 'translate':
+        tx = int(kwargs.get('tx', kwargs.get('x', 0)))
+        ty = int(kwargs.get('ty', kwargs.get('y', 0)))
+        return translate(image, tx, ty)
+    elif op == 'scale':
+        sx = float(kwargs.get('sx', kwargs.get('scale_x', kwargs.get('scale', 1.0))))
+        sy = float(kwargs.get('sy', kwargs.get('scale_y', kwargs.get('scale', 1.0))))
+        return scale(image, sx, sy)
+    elif op == 'rotate':
+        angle = float(kwargs.get('angle', kwargs.get('deg', 0)))
+        return rotate(image, angle)
+    elif op in ('shear_x', 'shearx', 'shear-x'):
+        f = float(kwargs.get('factor', kwargs.get('shear_x_factor', kwargs.get('shear', 0.0))))
+        return shear_x(image, f)
+    elif op in ('shear_y', 'sheary', 'shear-y'):
+        f = float(kwargs.get('factor', kwargs.get('shear_y_factor', kwargs.get('shear', 0.0))))
+        return shear_y(image, f)
+    else:
+        raise ValueError(f"Unknown affine operation: {operation}")
+
+# -------------------------
+# Interpolation operations
+# -------------------------
 def nearest_neighbor_interpolation(image, new_size):
     """
     Resize image using nearest neighbor interpolation
@@ -331,37 +361,9 @@ def bicubic_interpolation(image, new_size):
         return image.resize(new_size, Image.BICUBIC)
     return None
 
-
 # -------------------------
-# Affine transform operations
+# Histogram operations
 # -------------------------
-def apply_affine(image: Image.Image, operation: str, **kwargs) -> Image.Image:
-    if image is None:
-        raise ValueError("apply_affine: image is None")
-
-    op = operation.lower()
-    if op == 'translate':
-        tx = int(kwargs.get('tx', kwargs.get('x', 0)))
-        ty = int(kwargs.get('ty', kwargs.get('y', 0)))
-        return translate(image, tx, ty)
-    elif op == 'scale':
-        sx = float(kwargs.get('sx', kwargs.get('scale_x', kwargs.get('scale', 1.0))))
-        sy = float(kwargs.get('sy', kwargs.get('scale_y', kwargs.get('scale', 1.0))))
-        return scale(image, sx, sy)
-    elif op == 'rotate':
-        angle = float(kwargs.get('angle', kwargs.get('deg', 0)))
-        return rotate(image, angle)
-    elif op in ('shear_x', 'shearx', 'shear-x'):
-        f = float(kwargs.get('factor', kwargs.get('shear_x_factor', kwargs.get('shear', 0.0))))
-        return shear_x(image, f)
-    elif op in ('shear_y', 'sheary', 'shear-y'):
-        f = float(kwargs.get('factor', kwargs.get('shear_y_factor', kwargs.get('shear', 0.0))))
-        return shear_y(image, f)
-    else:
-        raise ValueError(f"Unknown affine operation: {operation}")
-
-
-
 def show_histogram(image):
     """
     Calculate and return histogram data
@@ -391,24 +393,39 @@ def histogram_equalization(image):
     Returns:
         Histogram equalized PIL Image object
     """
-    if image:
-        img_array = np.array(image)
-        equalized = np.zeros_like(img_array)
+    if image is None:
+        return None
+    
+    try:
+        # Convert to RGB if needed
+        img_rgb = image.convert("RGB")
+        img_array = np.array(img_rgb, dtype=np.uint8)
+        equalized = np.zeros_like(img_array, dtype=np.uint8)
         
         for i in range(3):  # For each RGB channel
             channel = img_array[:, :, i]
             # Calculate histogram
-            hist, bins = np.histogram(channel.flatten(), 256, [0, 256])
+            hist, bins = np.histogram(channel.flatten(), bins=256, range=(0, 256))
             # Calculate cumulative distribution
             cdf = hist.cumsum()
-            cdf_normalized = ((cdf - cdf.min()) * 255) / (cdf.max() - cdf.min())
-            # Apply equalization
+            # Normalize CDF to 0-255 range
+            if cdf.max() > cdf.min():
+                cdf_normalized = ((cdf - cdf.min()) * 255.0) / (cdf.max() - cdf.min())
+            else:
+                cdf_normalized = cdf.astype(np.float64)
+            
+            # Create lookup table and apply
+            cdf_normalized = cdf_normalized.astype(np.uint8)
             equalized[:, :, i] = cdf_normalized[channel]
         
-        return Image.fromarray(equalized.astype('uint8'))
-    return None
+        return Image.fromarray(equalized, mode='RGB')
+    except Exception as e:
+        # Return original image if processing fails
+        return image.convert("RGB")
 
-
+# -------------------------
+# Low-Pass Filter operations
+# -------------------------
 def gaussian_filter_func(image, sigma=1.0):
     """
     Apply Gaussian blur filter (low-pass)
@@ -420,15 +437,23 @@ def gaussian_filter_func(image, sigma=1.0):
     Returns:
         Filtered PIL Image object
     """
-    if image:
-        img_array = np.array(image)
-        filtered = np.zeros_like(img_array)
+    if image is None:
+        return None
+    
+    try:
+        # Convert to RGB if needed
+        img_rgb = image.convert("RGB")
+        img_array = np.array(img_rgb, dtype=np.uint8)
+        filtered = np.zeros_like(img_array, dtype=np.float64)
         
         for i in range(3):  # For each RGB channel
-            filtered[:, :, i] = gaussian_filter(img_array[:, :, i], sigma=sigma)
+            filtered[:, :, i] = gaussian_filter(img_array[:, :, i].astype(np.float64), sigma=sigma)
         
-        return Image.fromarray(filtered.astype('uint8'))
-    return None
+        # Clip and convert back to uint8
+        filtered = np.clip(filtered, 0, 255).astype(np.uint8)
+        return Image.fromarray(filtered, mode='RGB')
+    except Exception:
+        return image.convert("RGB")
 
 
 def median_filter_func(image, size=3):
@@ -442,17 +467,29 @@ def median_filter_func(image, size=3):
     Returns:
         Filtered PIL Image object
     """
-    if image:
-        img_array = np.array(image)
-        filtered = np.zeros_like(img_array)
+    if image is None:
+        return None
+    
+    try:
+        # Ensure size is odd
+        if size % 2 == 0:
+            size += 1
+        
+        # Convert to RGB if needed
+        img_rgb = image.convert("RGB")
+        img_array = np.array(img_rgb, dtype=np.uint8)
+        filtered = np.zeros_like(img_array, dtype=np.uint8)
         
         for i in range(3):  # For each RGB channel
             filtered[:, :, i] = median_filter(img_array[:, :, i], size=size)
         
-        return Image.fromarray(filtered.astype('uint8'))
-    return None
+        return Image.fromarray(filtered, mode='RGB')
+    except Exception:
+        return image.convert("RGB")
 
-
+# -------------------------
+# High-Pass Filter operations
+# -------------------------
 def laplacian_filter(image):
     """
     Apply Laplacian filter (high-pass, edge detection)
@@ -463,15 +500,22 @@ def laplacian_filter(image):
     Returns:
         Filtered PIL Image object
     """
-    if image:
+    if image is None:
+        return None
+    
+    try:
         gray = image.convert("L")
-        img_array = np.array(gray)
+        img_array = np.array(gray, dtype=np.float64)
         laplacian_result = laplace(img_array)
         # Normalize to 0-255
         laplacian_result = np.abs(laplacian_result)
-        laplacian_result = (laplacian_result / laplacian_result.max() * 255).astype('uint8')
-        return Image.fromarray(laplacian_result).convert("RGB")
-    return None
+        if laplacian_result.max() > 0:
+            laplacian_result = (laplacian_result / laplacian_result.max() * 255).astype(np.uint8)
+        else:
+            laplacian_result = laplacian_result.astype(np.uint8)
+        return Image.fromarray(laplacian_result, mode='L').convert("RGB")
+    except Exception:
+        return image.convert("RGB")
 
 
 def sobel_filter(image):
@@ -484,9 +528,12 @@ def sobel_filter(image):
     Returns:
         Filtered PIL Image object
     """
-    if image:
+    if image is None:
+        return None
+    
+    try:
         gray = image.convert("L")
-        img_array = np.array(gray)
+        img_array = np.array(gray, dtype=np.float64)
         
         # Apply Sobel filters
         sobel_x = sobel(img_array, axis=1)
@@ -494,10 +541,14 @@ def sobel_filter(image):
         
         # Combine
         sobel_result = np.sqrt(sobel_x**2 + sobel_y**2)
-        sobel_result = (sobel_result / sobel_result.max() * 255).astype('uint8')
+        if sobel_result.max() > 0:
+            sobel_result = (sobel_result / sobel_result.max() * 255).astype(np.uint8)
+        else:
+            sobel_result = sobel_result.astype(np.uint8)
         
-        return Image.fromarray(sobel_result).convert("RGB")
-    return None
+        return Image.fromarray(sobel_result, mode='L').convert("RGB")
+    except Exception:
+        return image.convert("RGB")
 
 
 def gradient_filter(image):
@@ -510,9 +561,12 @@ def gradient_filter(image):
     Returns:
         Filtered PIL Image object
     """
-    if image:
+    if image is None:
+        return None
+    
+    try:
         gray = image.convert("L")
-        img_array = np.array(gray)
+        img_array = np.array(gray, dtype=np.float64)
         
         # Calculate gradients
         grad_x = np.gradient(img_array, axis=1)
@@ -520,8 +574,129 @@ def gradient_filter(image):
         
         # Combine
         gradient_result = np.sqrt(grad_x**2 + grad_y**2)
-        gradient_result = (gradient_result / gradient_result.max() * 255).astype('uint8')
+        if gradient_result.max() > 0:
+            gradient_result = (gradient_result / gradient_result.max() * 255).astype(np.uint8)
+        else:
+            gradient_result = gradient_result.astype(np.uint8)
         
-        return Image.fromarray(gradient_result).convert("RGB")
+        return Image.fromarray(gradient_result, mode='L').convert("RGB")
+    except Exception:
+        return image.convert("RGB")
+
+# -------------------------
+# Member 5: Image Operations (Crop + Extra Features)
+# -------------------------
+def crop_image(image, left, top, right, bottom):
+    """
+    Crop image using coordinates
+    
+    Args:
+        image: PIL Image object
+        left: Left coordinate
+        top: Top coordinate
+        right: Right coordinate
+        bottom: Bottom coordinate
+        
+    Returns:
+        Cropped PIL Image object
+    """
+    if image:
+        # Ensure coordinates are within image bounds
+        width, height = image.size
+        left = max(0, min(left, width))
+        top = max(0, min(top, height))
+        right = max(left, min(right, width))
+        bottom = max(top, min(bottom, height))
+        
+        return image.crop((left, top, right, bottom))
+    return None
+
+
+def zoom_image(image, zoom_factor):
+    """
+    Zoom in/out on image
+    
+    Args:
+        image: PIL Image object
+        zoom_factor: Zoom factor (>1 for zoom in, <1 for zoom out)
+        
+    Returns:
+        Zoomed PIL Image object
+    """
+    if image:
+        width, height = image.size
+        new_width = int(width * zoom_factor)
+        new_height = int(height * zoom_factor)
+        return image.resize((new_width, new_height), Image.LANCZOS)
+    return None
+
+
+def flip_image(image, direction='horizontal'):
+    """
+    Flip image horizontally or vertically
+    
+    Args:
+        image: PIL Image object
+        direction: 'horizontal' or 'vertical'
+        
+    Returns:
+        Flipped PIL Image object
+    """
+    if image:
+        if direction == 'horizontal':
+            return image.transpose(Image.FLIP_LEFT_RIGHT)
+        elif direction == 'vertical':
+            return image.transpose(Image.FLIP_TOP_BOTTOM)
+    return None
+
+
+def adjust_brightness(image, factor):
+    """
+    Adjust image brightness
+    
+    Args:
+        image: PIL Image object
+        factor: Brightness factor (-100 to 100, 0 = no change)
+        
+    Returns:
+        Brightness-adjusted PIL Image object
+    """
+    if image:
+        # Convert factor from -100 to 100 range to multiplier
+        # factor 0 = 1.0, factor 100 = 2.0, factor -100 = 0.0
+        multiplier = 1.0 + (factor / 100.0)
+        
+        img_array = np.array(image, dtype=np.float32)
+        img_array = img_array * multiplier
+        img_array = np.clip(img_array, 0, 255).astype(np.uint8)
+        
+        return Image.fromarray(img_array)
+    return None
+
+
+def adjust_contrast(image, factor):
+    """
+    Adjust image contrast
+    
+    Args:
+        image: PIL Image object
+        factor: Contrast factor (-100 to 100, 0 = no change)
+        
+    Returns:
+        Contrast-adjusted PIL Image object
+    """
+    if image:
+        # Convert factor from -100 to 100 range
+        # factor 0 = 1.0, factor 100 = higher contrast, factor -100 = lower contrast
+        if factor == 0:
+            return image
+        
+        # PIL's ImageEnhance uses factor 1.0 = no change
+        # We map: -100 -> 0.0, 0 -> 1.0, 100 -> 2.0
+        enhance_factor = 1.0 + (factor / 100.0)
+        
+        from PIL import ImageEnhance
+        enhancer = ImageEnhance.Contrast(image)
+        return enhancer.enhance(enhance_factor)
     return None
 
