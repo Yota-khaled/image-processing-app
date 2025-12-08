@@ -1,96 +1,68 @@
 # Project Structure
 
-This document describes the organization of the Image Processing Application project.
+This document describes the organization of the Image Processing Application project (Gradio UI).
 
 ## File Organization
 
 ```
-Image Processing Project/
+image-processing-app-main/
 │
-├── app.py                 # Main Streamlit application (entry point)
-├── config.py              # Configuration and color palette
-├── utils.py               # Utility functions (image loading, info display)
-├── image_processing.py    # All image processing functions
-├── ui_components.py       # UI styling and components
-├── __init__.py            # Package initialization
-├── requirements.txt       # Python dependencies
-├── README.md              # Project documentation
-├── PROJECT_STRUCTURE.md   # This file
-│
-└── .streamlit/
-    └── config.toml        # Streamlit theme configuration
-```
+├── app_gradio.py        # Gradio entry point (main app)
+├── app_handlers.py      # Gradio UI handlers, shared state, orchestration
+├── image_processing.py  # Pure image-processing functions (no UI)
+├── compression.py       # Lossless compression algorithms + reporter
+├── transform_coding.py  # Transform/predictive/wavelet coding utilities
+├── ui_components.py     # Shared Gradio CSS/theme snippet
+├── requirements.txt     # Python dependencies
+├── README.md            # Project documentation
+├── PROJECT_STRUCTURE.md # This file
 
 ## Module Descriptions
 
-### `app.py`
-- **Purpose**: Main application entry point
-- **Contains**: 
-  - Streamlit UI layout
-  - User interaction handlers
-  - Integration of all modules
-- **Imports**: All other modules
+### `app_gradio.py`
+- **Purpose**: Main Gradio application (UI layout and wiring).
+- **Imports**: Handlers from `app_handlers.py`, CSS from `ui_components.py`.
 
-### `config.py`
-- **Purpose**: Centralized configuration
+### `app_handlers.py`
+- **Purpose**: UI orchestration layer.
 - **Contains**:
-  - Color palette definitions
-  - Application settings
-  - Supported file formats
-- **Used by**: All modules that need configuration
-
-### `utils.py`
-- **Purpose**: Helper and utility functions
-- **Contains**:
-  - `load_image()` - Load images from uploaded files
-  - `display_image_info()` - Format image information
-  - `get_image_info_dict()` - Get image info as dictionary
-- **Used by**: `app.py`
+  - Shared `global_state` for original/processed images.
+  - Event handlers (`handle_*`) for all operations.
+  - Load/reset/download helpers.
+- **Uses**: `image_processing.py`, `compression.py`, `transform_coding.py`.
 
 ### `image_processing.py`
-- **Purpose**: All image processing operations
+- **Purpose**: Pure image-processing utilities (no UI/state).
 - **Contains**:
-  - Basic operations (grayscale, binary)
-  - Affine transformations (translate, scale, rotate, shear)
-  - Interpolation methods (nearest, bilinear, bicubic)
-  - Histogram operations
-  - Filter operations (Gaussian, Median, Laplacian, Sobel, Gradient)
-- **Used by**: `app.py`
+  - Grayscale/binary conversions
+  - Affine transforms (translate/scale/rotate/shear)
+  - Interpolation (nearest/bilinear/bicubic)
+  - Histogram ops (compute/equalize)
+  - Filters (Gaussian/Median/Laplacian/Sobel/Gradient)
+  - Basic image ops (crop/zoom/flip/brightness/contrast)
+
+### `compression.py`
+- **Purpose**: Lossless compression algorithms and reporting helper.
+- **Contains**: Huffman, Golomb-Rice, Arithmetic, LZW, RLE, `compress_and_report`.
+
+### `transform_coding.py`
+- **Purpose**: Transform/predictive/wavelet coding utilities.
+- **Contains**: Symbol-based, bit-plane, block DCT, predictive coding, wavelet encode/decode.
 
 ### `ui_components.py`
-- **Purpose**: UI styling and reusable components
-- **Contains**:
-  - `apply_custom_css()` - Apply custom styling
-  - `render_footer()` - Render application footer
-  - `initialize_session_state()` - Initialize Streamlit session state
-- **Used by**: `app.py`
+- **Purpose**: Shared Gradio CSS theme (used by `app_gradio.py`).
 
-## Benefits of This Structure
-
-1. **Separation of Concerns**: Each module has a single, clear responsibility
-2. **Maintainability**: Easy to find and modify specific functionality
-3. **Reusability**: Functions can be imported and used in other projects
-4. **Testability**: Each module can be tested independently
-5. **Scalability**: Easy to add new features without cluttering the main file
 
 ## Adding New Features
 
-### To add a new image processing function:
-1. Add the function to `image_processing.py`
-2. Import it in `app.py`
-3. Add a button/control in the appropriate section of `app.py`
-
-### To change colors/styling:
-1. Update `COLORS` dictionary in `config.py`
-2. CSS will automatically use the new colors
-
-### To add a new utility function:
-1. Add the function to `utils.py`
-2. Import and use it where needed
+1. Add pure processing code to `image_processing.py` (or `compression.py` / `transform_coding.py` as appropriate).
+2. Expose it via a handler in `app_handlers.py`.
+3. Wire the handler to UI controls in `app_gradio.py`.
+4. Style updates go in `ui_components.py`.
 
 ## Dependencies
 
-All dependencies are listed in `requirements.txt`. Install them with:
+All dependencies are listed in `requirements.txt`. Install with:
 ```bash
 pip install -r requirements.txt
 ```
