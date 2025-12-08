@@ -483,11 +483,15 @@ with st.expander("Image Interpolation"):
             st.info("No interpolated image — apply an interpolation method above")
 
 with st.expander("Histogram"):
+    # Options: choose gray/rgb for histogram and equalization, always start from original image
+    hist_mode = st.selectbox("Histogram mode", ["gray", "rgb"], index=0, key="hist_mode_select")
+    eq_mode = st.selectbox("Equalization mode", ["gray", "rgb"], index=0, key="eq_mode_select")
+
     c1, c2 = st.columns(2)
     if c1.button("Show Histogram", key="hist_btn"):
         if st.session_state.get("original_image") is not None:
             try:
-                hist_data = show_histogram(st.session_state.original_image)
+                hist_data = show_histogram(st.session_state.original_image, mode=hist_mode)
                 if hist_data:
                     st.success("Histogram calculated. See visualization below.")
                     # Display histogram visualization
@@ -496,7 +500,7 @@ with st.expander("Histogram"):
                         ax.plot(values, label=color, alpha=0.7)
                     ax.set_xlabel('Pixel Intensity')
                     ax.set_ylabel('Frequency')
-                    ax.set_title('Image Histogram')
+                    ax.set_title(f"Image Histogram ({hist_mode.upper()})")
                     ax.legend()
                     ax.grid(True, alpha=0.3)
                     st.pyplot(fig)
@@ -510,10 +514,10 @@ with st.expander("Histogram"):
     if c2.button("Equalization", key="equalize_btn"):
         if st.session_state.get("original_image") is not None:
             try:
-                result = histogram_equalization(st.session_state.original_image)
+                result = histogram_equalization(st.session_state.original_image, mode=eq_mode)
                 if result is not None:
                     st.session_state.processed_image = result
-                    st.success("Equalization applied.")
+                    st.success(f"Equalization applied ({eq_mode.upper()}).")
                 else:
                     st.error("Equalization returned None. Please check the image.")
             except Exception as e:

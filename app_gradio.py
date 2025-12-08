@@ -8,6 +8,8 @@ from PIL import Image
 import matplotlib.pyplot as plt
 import tempfile
 import time
+import compression
+import transform_coding
 
 # Import your existing image processing functions
 try:
@@ -160,7 +162,9 @@ def create_gradio_app():
     }
     """
     
-    with gr.Blocks(title="Image Processing Application", css=custom_css, theme=gr.themes.Soft()) as demo:
+    # Use Blocks without css arg (not supported), inject CSS manually
+    with gr.Blocks(title="Image Processing Application", theme=gr.themes.Soft()) as demo:
+        gr.HTML(f"<style>{custom_css}</style>")
         # Header
         gr.Markdown("""
         <div class="header">
@@ -265,14 +269,13 @@ def create_gradio_app():
                     with gr.TabItem("Filters"):
                         with gr.Tabs():
                             with gr.TabItem("Low-Pass"):
-                                sigma = gr.Slider(0.1, 5.0, 1.0, label="Gaussian Sigma")
-                                median_size = gr.Slider(3, 15, 3, step=2, label="Median Size")
-                                
+                                filter_source = gr.Dropdown(["original", "processed"], value="processed", label="Apply on")
                                 with gr.Row():
-                                    gaussian_btn = gr.Button("Gaussian", variant="primary", size="sm")
-                                    median_btn = gr.Button("Median", variant="primary", size="sm")
+                                    gaussian_btn = gr.Button("Gaussian (19x19, σ=3)", variant="primary", size="sm")
+                                    median_btn = gr.Button("Median (7x7)", variant="primary", size="sm")
                             
                             with gr.TabItem("High-Pass"):
+                                filter_source_hp = gr.Dropdown(["original", "processed"], value="processed", label="Apply on")
                                 with gr.Row():
                                     laplacian_btn = gr.Button("Laplacian", variant="primary", size="sm")
                                     sobel_btn = gr.Button("Sobel", variant="primary", size="sm")
@@ -281,8 +284,25 @@ def create_gradio_app():
                     # Histogram
                     with gr.TabItem("Histogram"):
                         with gr.Row():
+                            hist_mode_dd = gr.Dropdown(["gray", "rgb"], value="gray", label="Histogram mode (from original)")
+                            eq_mode_dd = gr.Dropdown(["gray", "rgb"], value="gray", label="Equalization mode (from original)")
+                        with gr.Row():
                             show_hist_btn = gr.Button("Show Histogram", variant="primary", size="sm")
                             equalize_btn = gr.Button("Equalize", variant="primary", size="sm")
+                        with gr.Row():
+                            hist_quality_box = gr.Textbox(label="Histogram quality", interactive=False)
+                    
+                    # Compression
+                    with gr.TabItem("Compression"):
+                        with gr.Row():
+                            algs = gr.CheckboxGroup(
+                                ["Huffman", "Golomb-Rice", "Arithmetic", "LZW", "RLE"],
+                                value=["Huffman", "Golomb-Rice"],
+                                label="Algorithms (original image, grayscale)"
+                            )
+                            golomb_m = gr.Slider(2, 16, value=4, step=2, label="Golomb-Rice m (power of 2)")
+                        compress_btn = gr.Button("Run Compression", variant="primary")
+                        compress_output = gr.Markdown("Compression results will appear here.")
                     
                     # Image Operations
                     with gr.TabItem("Operations"):
@@ -313,6 +333,22 @@ def create_gradio_app():
                                 with gr.Row():
                                     brightness_btn = gr.Button("Brightness", variant="primary", size="sm")
                                     contrast_btn = gr.Button("Contrast", variant="primary", size="sm")
+
+                            with gr.TabItem("Transform Coding"):
+                                tc_source = gr.Dropdown(["original", "processed"], value="processed", label="Apply on")
+                                with gr.Row():
+                                    symbol_btn = gr.Button("Symbol-based", variant="primary", size="sm")
+                                    bitplane_btn = gr.Button("Bit-plane", variant="primary", size="sm")
+                                with gr.Row():
+                                    dct_block = gr.Slider(4, 16, value=8, step=2, label="DCT Block Size")
+                                    dct_btn = gr.Button("DCT Block", variant="primary", size="sm")
+                                with gr.Row():
+                                    predictor_dd = gr.Dropdown(["previous", "average"], value="previous", label="Predictor")
+                                    predictive_btn = gr.Button("Predictive", variant="primary", size="sm")
+                                with gr.Row():
+                                    wavelet_dd = gr.Dropdown(["haar", "db4", "bior2.2"], value="haar", label="Wavelet")
+                                    wavelet_level = gr.Slider(1, 5, value=3, step=1, label="Level")
+                                    wavelet_btn = gr.Button("Wavelet", variant="primary", size="sm")
 
 
                     # PROCESSED IMAGE at the top of right column
@@ -349,16 +385,18 @@ def create_gradio_app():
             except Exception as e:
                 return None, None, f"Error: {str(e)}", "Failed to load image"
         
-        def apply_operation(operation_func, operation_name, *args):
-            """Apply operation to CURRENT processed image (not just grayscale)"""
-            if global_state['current_processed_pil'] is None:
+        def _get_image_by_source(source: str):
+            if source == "original":
+                return global_state['original_pil']
+            return global_state['current_processed_pil']
+
+        def apply_operation(operation_func, operation_name, *args, source: str = "processed"):
+            """Apply operation to chosen source image ('original' or 'processed')."""
+            img_to_process = _get_image_by_source(source)
+            if img_to_process is None:
                 return None, "No image available"
             
             try:
-                # Get the CURRENT processed image (could be grayscale, binary, or any other)
-                img_to_process = global_state['current_processed_pil']
-                
-                # Apply operation to whatever image we have
                 result = operation_func(img_to_process, *args)
                 
                 if result is None:
@@ -468,22 +506,23 @@ def create_gradio_app():
             return apply_operation(lambda img: bicubic_interpolation(img, (width, height)), 
                                   f"Bicubic ({width}x{height})")
         
-        def handle_gaussian(sigma):
-            return apply_operation(lambda img: gaussian_filter_func(img, sigma), 
-                                  f"Gaussian (σ={sigma:.1f})")
+        def handle_gaussian(source):
+            # Fixed 19x19 (truncate approx 3.0) and sigma=3
+            return apply_operation(lambda img: gaussian_filter_func(img, sigma=3), 
+                                  "Gaussian (19x19, σ=3)", source=source)
         
-        def handle_median(size):
-            return apply_operation(lambda img: median_filter_func(img, size), 
-                                  f"Median (size={size})")
+        def handle_median(source):
+            return apply_operation(lambda img: median_filter_func(img, size=7), 
+                                  "Median (7x7)", source=source)
         
-        def handle_laplacian():
-            return apply_operation(laplacian_filter, "Laplacian")
+        def handle_laplacian(source):
+            return apply_operation(laplacian_filter, "Laplacian", source=source)
         
-        def handle_sobel():
-            return apply_operation(sobel_filter, "Sobel")
+        def handle_sobel(source):
+            return apply_operation(sobel_filter, "Sobel", source=source)
         
-        def handle_gradient():
-            return apply_operation(gradient_filter, "Gradient")
+        def handle_gradient(source):
+            return apply_operation(gradient_filter, "Gradient", source=source)
         
         def handle_equalize():
             return apply_operation(histogram_equalization, "Histogram Equalization")
@@ -507,22 +546,106 @@ def create_gradio_app():
         def handle_contrast(factor):
             return apply_operation(lambda img: adjust_contrast(img, factor), f"Contrast ({factor})")
         
-        def handle_histogram():
-            if global_state['current_processed_pil'] is None:
+        # Transform coding handlers (use grayscale conversion inside)
+        def handle_symbol(source):
+            img = _get_image_by_source(source)
+            if img is None:
+                return None, "No image available"
+            arr = np.array(img.convert("L"))
+            data = arr.flatten().tolist()
+            encoded = transform_coding.symbol_based_encode(data)
+            decoded = transform_coding.symbol_based_decode(encoded)
+            reconstructed = np.array(decoded, dtype=np.uint8).reshape(arr.shape)
+            result = Image.fromarray(reconstructed, mode="L").convert("RGB")
+            global_state['current_processed_pil'] = result
+            return pil_to_numpy(result), "Symbol-based coding applied"
+
+        def handle_bitplane(source):
+            img = _get_image_by_source(source)
+            if img is None:
+                return None, "No image available"
+            arr = np.array(img.convert("L"))
+            bit_planes, shape = transform_coding.bit_plane_encode(arr)
+            reconstructed = transform_coding.bit_plane_decode(bit_planes, shape)
+            result = Image.fromarray(reconstructed, mode="L").convert("RGB")
+            global_state['current_processed_pil'] = result
+            return pil_to_numpy(result), "Bit-plane coding applied"
+
+        def handle_dct(block_size, source):
+            img = _get_image_by_source(source)
+            if img is None:
+                return None, "No image available"
+            arr = np.array(img.convert("L"))
+            dct_blocks, orig_shape, pad_shape, bs = transform_coding.dct_block_encode(arr, int(block_size))
+            reconstructed = transform_coding.dct_block_decode(dct_blocks, orig_shape, pad_shape, bs)
+            result = Image.fromarray(reconstructed, mode="L").convert("RGB")
+            global_state['current_processed_pil'] = result
+            return pil_to_numpy(result), f"DCT block (size={int(block_size)}) applied"
+
+        def handle_predictive(predictor, source):
+            img = _get_image_by_source(source)
+            if img is None:
+                return None, "No image available"
+            arr = np.array(img.convert("L"))
+            errors = transform_coding.predictive_encode(arr, predictor)
+            reconstructed = transform_coding.predictive_decode(errors, predictor)
+            result = Image.fromarray(reconstructed, mode="L").convert("RGB")
+            global_state['current_processed_pil'] = result
+            return pil_to_numpy(result), f"Predictive ({predictor}) applied"
+
+        def handle_wavelet(wavelet, level, source):
+            if not transform_coding.HAS_PYWT:
+                return None, "PyWavelets not installed"
+            img = _get_image_by_source(source)
+            if img is None:
+                return None, "No image available"
+            arr = np.array(img.convert("L"))
+            coeffs, orig_shape, wv, lvl = transform_coding.wavelet_encode(arr, wavelet, int(level))
+            reconstructed = transform_coding.wavelet_decode(coeffs, orig_shape, wv, lvl)
+            result = Image.fromarray(reconstructed, mode="L").convert("RGB")
+            global_state['current_processed_pil'] = result
+            return pil_to_numpy(result), f"Wavelet ({wavelet}, level {int(level)}) applied"
+        
+        def _hist_quality_message(gray_array: np.ndarray) -> str:
+            std_val = float(gray_array.std())
+            if std_val > 50:
+                return f"Histogram spread looks good (std={std_val:.1f})."
+            elif std_val > 25:
+                return f"Histogram moderate (std={std_val:.1f}) — some contrast enhancement may help."
+            else:
+                return f"Histogram narrow (std={std_val:.1f}) — low contrast detected."
+
+        def handle_histogram(mode):
+            # Always start from ORIGINAL image
+            if global_state['original_pil'] is None:
                 return None, "Upload an image first"
             
             try:
-                img = global_state['current_processed_pil'].convert('L')
-                img_array = np.array(img)
-                
-                hist, bins = np.histogram(img_array.flatten(), bins=256, range=(0, 256))
-                
-                fig, ax = plt.subplots(figsize=(8, 4))
-                ax.plot(hist, color='blue', alpha=0.7)
-                ax.set_xlabel('Pixel Intensity')
-                ax.set_ylabel('Frequency')
-                ax.set_title('Image Histogram')
-                ax.grid(True, alpha=0.3)
+                base_img = global_state['original_pil']
+                if mode == "gray":
+                    img = base_img.convert('L')
+                    img_array = np.array(img)
+                    hist, _ = np.histogram(img_array.flatten(), bins=256, range=(0, 256))
+                    
+                    fig, ax = plt.subplots(figsize=(8, 4))
+                    ax.plot(hist, color='blue', alpha=0.7)
+                    ax.set_xlabel('Pixel Intensity')
+                    ax.set_ylabel('Frequency')
+                    ax.set_title('Image Histogram (GRAY)')
+                    ax.grid(True, alpha=0.3)
+                else:
+                    img = base_img.convert('RGB')
+                    img_array = np.array(img)
+                    fig, ax = plt.subplots(figsize=(8, 4))
+                    colors = ['red', 'green', 'blue']
+                    for i, c in enumerate(colors):
+                        hist, _ = np.histogram(img_array[:, :, i].flatten(), bins=256, range=(0, 256))
+                        ax.plot(hist, color=c, alpha=0.7, label=c.title())
+                    ax.set_xlabel('Pixel Intensity')
+                    ax.set_ylabel('Frequency')
+                    ax.set_title('Image Histogram (RGB)')
+                    ax.legend()
+                    ax.grid(True, alpha=0.3)
                 
                 buf = io.BytesIO()
                 plt.tight_layout()
@@ -531,14 +654,66 @@ def create_gradio_app():
                 buf.seek(0)
                 
                 hist_img = Image.open(buf)
-                
-                # Store histogram as processed image
                 hist_np = pil_to_numpy(hist_img)
-                global_state['current_processed_pil'] = numpy_to_pil(hist_np)
                 
-                return hist_np, "Histogram generated"
+                quality_msg = _hist_quality_message(np.array(base_img.convert("L")))
+                
+                # Do not change processed image for histogram view
+                return hist_np, quality_msg
             except Exception as e:
                 return None, f"Error: {str(e)}"
+
+        def handle_equalize(mode):
+            # Equalize from ORIGINAL image using selected mode
+            if global_state['original_pil'] is None:
+                return None, "Upload an image first"
+            try:
+                base_img = global_state['original_pil']
+                result = histogram_equalization(base_img, mode=mode)
+                if result is None:
+                    return None, "Equalization failed"
+                global_state['current_processed_pil'] = result
+                return pil_to_numpy(result), f"Equalization applied ({mode.upper()})"
+            except Exception as e:
+                return None, f"Error: {str(e)}"
+        
+        # Compression (Member 9) - run on ORIGINAL image grayscale
+        def handle_compress(selected_algs, golomb_m):
+            if global_state['original_pil'] is None:
+                return None, "Upload an image first"
+            try:
+                img_array = np.array(global_state['original_pil'].convert("L"))
+                data_list = img_array.flatten().tolist()
+                data_str = ''.join([chr(int(p)) for p in data_list])
+                results = []
+                if "Huffman" in selected_algs:
+                    res = compression.compress_and_report(data_str, "Huffman", compression.huffman_encode, compression.huffman_decode)
+                    if res: results.append(res)
+                if "Golomb-Rice" in selected_algs:
+                    res = compression.compress_and_report(data_list, "Golomb-Rice", compression.golomb_rice_encode, compression.golomb_rice_decode, golomb_m)
+                    if res: results.append(res)
+                if "Arithmetic" in selected_algs:
+                    res = compression.compress_and_report(data_str, "Arithmetic", compression.arithmetic_encode, compression.arithmetic_decode)
+                    if res: results.append(res)
+                if "LZW" in selected_algs:
+                    res = compression.compress_and_report(data_str, "LZW", compression.lzw_encode, compression.lzw_decode)
+                    if res: results.append(res)
+                if "RLE" in selected_algs:
+                    res = compression.compress_and_report(data_str, "RLE", compression.rle_encode, compression.rle_decode)
+                    if res: results.append(res)
+                if not results:
+                    return None, "No results"
+                # Format results as markdown table
+                lines = ["| Algorithm | Original | Compressed | Ratio% | Encode s | Decode s | Correct |",
+                         "|---|---|---|---|---|---|---|"]
+                for r in results:
+                    lines.append(f"| {r.get('algorithm')} | {r.get('original_size')} | {r.get('compressed_size')} | {r.get('compression_ratio'):.2f} | {r.get('encode_time'):.4f} | {r.get('decode_time'):.4f} | {r.get('is_correct')} |")
+                md = "\n".join(lines)
+                # Do not alter the current processed image; return current display image (if any)
+                img_np = pil_to_numpy(global_state['current_processed_pil']) if global_state['current_processed_pil'] is not None else None
+                return img_np, md
+            except Exception as e:
+                return None, f"Compression error: {str(e)}"
         
         def download_processed_image():
             if global_state['current_processed_pil'] is None:
@@ -643,45 +818,52 @@ def create_gradio_app():
         # Filters
         gaussian_btn.click(
             handle_gaussian,
-            inputs=[sigma],
+            inputs=[filter_source],
             outputs=[processed_display, status_text]
         )
         
         median_btn.click(
             handle_median,
-            inputs=[median_size],
+            inputs=[filter_source],
             outputs=[processed_display, status_text]
         )
         
         laplacian_btn.click(
             handle_laplacian,
-            inputs=[],
+            inputs=[filter_source_hp],
             outputs=[processed_display, status_text]
         )
         
         sobel_btn.click(
             handle_sobel,
-            inputs=[],
+            inputs=[filter_source_hp],
             outputs=[processed_display, status_text]
         )
         
         gradient_btn.click(
             handle_gradient,
-            inputs=[],
+            inputs=[filter_source_hp],
             outputs=[processed_display, status_text]
         )
         
         # Histogram
         show_hist_btn.click(
             handle_histogram,
-            inputs=[],
-            outputs=[processed_display, status_text]
+            inputs=[hist_mode_dd],
+            outputs=[processed_display, hist_quality_box]
         )
         
         equalize_btn.click(
             handle_equalize,
-            inputs=[],
+            inputs=[eq_mode_dd],
             outputs=[processed_display, status_text]
+        )
+
+        # Compression
+        compress_btn.click(
+            handle_compress,
+            inputs=[algs, golomb_m],
+            outputs=[processed_display, compress_output]
         )
         
         # Image operations
@@ -718,6 +900,37 @@ def create_gradio_app():
         flip_v_btn.click(
             handle_flip_v,
             inputs=[],
+            outputs=[processed_display, status_text]
+        )
+
+        # Transform coding
+        symbol_btn.click(
+            handle_symbol,
+            inputs=[tc_source],
+            outputs=[processed_display, status_text]
+        )
+        
+        bitplane_btn.click(
+            handle_bitplane,
+            inputs=[tc_source],
+            outputs=[processed_display, status_text]
+        )
+        
+        dct_btn.click(
+            handle_dct,
+            inputs=[dct_block, tc_source],
+            outputs=[processed_display, status_text]
+        )
+        
+        predictive_btn.click(
+            handle_predictive,
+            inputs=[predictor_dd, tc_source],
+            outputs=[processed_display, status_text]
+        )
+        
+        wavelet_btn.click(
+            handle_wavelet,
+            inputs=[wavelet_dd, wavelet_level, tc_source],
             outputs=[processed_display, status_text]
         )
         

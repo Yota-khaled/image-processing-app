@@ -364,63 +364,73 @@ def bicubic_interpolation(image, new_size):
 # -------------------------
 # Histogram operations
 # -------------------------
-def show_histogram(image):
+def show_histogram(image, mode: str = "rgb"):
     """
-    Calculate and return histogram data
-    
-    Args:
-        image: PIL Image object
-        
-    Returns:
-        Dictionary with histogram data for R, G, B channels
+    Calculate and return histogram data.
+    mode: "rgb" (default) -> per-channel histograms
+          "gray"         -> single-channel histogram on grayscale
     """
-    if image:
-        img_array = np.array(image)
+    if image is None:
+        return None
+
+    if mode.lower() == "gray":
+        gray = np.array(image.convert("L"))
+        hist = np.histogram(gray.flatten(), bins=256, range=(0, 256))[0]
+        return {"Gray": hist}
+    else:
+        img_array = np.array(image.convert("RGB"))
         histograms = {}
         for i, color in enumerate(['Red', 'Green', 'Blue']):
             histograms[color] = np.histogram(img_array[:, :, i], bins=256, range=(0, 256))[0]
         return histograms
-    return None
 
 
-def histogram_equalization(image):
+def histogram_equalization(image, mode: str = "rgb"):
     """
     Apply histogram equalization to enhance image contrast
     
     Args:
         image: PIL Image object
+        mode: "rgb" (default) to equalize each channel separately,
+              "gray" to equalize grayscale and return RGB for UI
         
     Returns:
         Histogram equalized PIL Image object
     """
     if image is None:
         return None
-    
+
     try:
-        # Convert to RGB if needed
-        img_rgb = image.convert("RGB")
-        img_array = np.array(img_rgb, dtype=np.uint8)
-        equalized = np.zeros_like(img_array, dtype=np.uint8)
-        
-        for i in range(3):  # For each RGB channel
-            channel = img_array[:, :, i]
-            # Calculate histogram
-            hist, bins = np.histogram(channel.flatten(), bins=256, range=(0, 256))
-            # Calculate cumulative distribution
+        if mode.lower() == "gray":
+            gray = image.convert("L")
+            channel = np.array(gray, dtype=np.uint8)
+            hist, _ = np.histogram(channel.flatten(), bins=256, range=(0, 256))
             cdf = hist.cumsum()
-            # Normalize CDF to 0-255 range
             if cdf.max() > cdf.min():
-                cdf_normalized = ((cdf - cdf.min()) * 255.0) / (cdf.max() - cdf.min())
+                cdf_norm = ((cdf - cdf.min()) * 255.0) / (cdf.max() - cdf.min())
             else:
-                cdf_normalized = cdf.astype(np.float64)
+                cdf_norm = cdf.astype(np.float64)
+            cdf_norm = cdf_norm.astype(np.uint8)
+            eq = cdf_norm[channel]
+            return Image.fromarray(eq, mode="L").convert("RGB")
+        else:
+            img_rgb = image.convert("RGB")
+            img_array = np.array(img_rgb, dtype=np.uint8)
+            equalized = np.zeros_like(img_array, dtype=np.uint8)
             
-            # Create lookup table and apply
-            cdf_normalized = cdf_normalized.astype(np.uint8)
-            equalized[:, :, i] = cdf_normalized[channel]
-        
-        return Image.fromarray(equalized, mode='RGB')
-    except Exception as e:
-        # Return original image if processing fails
+            for i in range(3):  # For each RGB channel
+                channel = img_array[:, :, i]
+                hist, _ = np.histogram(channel.flatten(), bins=256, range=(0, 256))
+                cdf = hist.cumsum()
+                if cdf.max() > cdf.min():
+                    cdf_norm = ((cdf - cdf.min()) * 255.0) / (cdf.max() - cdf.min())
+                else:
+                    cdf_norm = cdf.astype(np.float64)
+                cdf_norm = cdf_norm.astype(np.uint8)
+                equalized[:, :, i] = cdf_norm[channel]
+            
+            return Image.fromarray(equalized, mode='RGB')
+    except Exception:
         return image.convert("RGB")
 
 # -------------------------
