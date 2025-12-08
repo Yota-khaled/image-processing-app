@@ -8,10 +8,6 @@ from PIL import Image
 import numpy as np
 from scipy.ndimage import gaussian_filter, median_filter, laplace, sobel
 
-# image_processing.py
-from PIL import Image
-import numpy as np
-
 
 
 # -------------------------
@@ -164,37 +160,6 @@ def to_binary(image: Image.Image, threshold: Optional[int] = None) -> Image.Imag
     else:
         return Image.fromarray(avg_bin_arr, mode='L').convert("RGB")
 
-# def to_grayscale(image):
-#     """
-#     Convert image to grayscale
-    
-#     Args:
-#         image: PIL Image object
-        
-#     Returns:
-#         Grayscale PIL Image object
-#     """
-#     if image:
-#         return image.convert("L").convert("RGB")
-#     return None
-
-
-# def to_binary(image, threshold=128):
-#     """
-#     Convert image to binary (black and white)
-    
-#     Args:
-#         image: PIL Image object
-#         threshold: Threshold value (0-255) for binary conversion
-        
-#     Returns:
-#         Binary PIL Image object
-#     """
-#     if image:
-#         gray = image.convert("L")
-#         binary = gray.point(lambda x: 255 if x > threshold else 0, mode='1')
-#         return binary.convert("RGB")
-#     return None
 
 # -------------------------
 # Affine transform operations
