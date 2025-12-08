@@ -1,6 +1,6 @@
 """
 Lossless Compression Algorithms
-Member 9 - Implementation of various compression algorithms
+Implementation of various compression algorithms
 """
 
 import heapq
