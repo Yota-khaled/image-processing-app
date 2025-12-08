@@ -1,6 +1,6 @@
 """
 Transform Coding + Predictive + Wavelet
-Member 10 - Implementation of various transform coding techniques
+Implementation of various transform coding techniques
 """
 
 import numpy as np
