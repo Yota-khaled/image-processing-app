@@ -1,69 +1,46 @@
-# Image Processing Application
+# Image Processing Application (Gradio)
 
-A professional image processing application built with Streamlit, featuring a beautiful color scheme and comprehensive image manipulation tools.
-
-## Color Palette
-
-The application uses a custom color scheme:
-- **Primary**: `#1B3C53` (Dark Blue)
-- **Secondary**: `#234C6A` (Medium Blue)
-- **Tertiary**: `#456882` (Lighter Blue)
-- **Light**: `#E3E3E3` (Light Gray)
+A feature-rich image processing app with a Gradio UI. It includes classic image transforms, filters, histogram tools, transform coding, and lossless compression experiments.
 
 ## Installation
 
-1. Install the required packages:
 ```bash
 pip install -r requirements.txt
 ```
 
-## Running the Application
-
-To run the Streamlit application:
+## Run the Gradio App
 
 ```bash
-streamlit run app.py
+python app_gradio.py
 ```
 
-The application will open in your default web browser at `http://localhost:8501`
+The app starts at `http://127.0.0.1:7860` (shown in the console). If you’re inside an IDE panel, open that URL in a browser for fullscreen.
 
 ## Features
 
-### Basic Operations
-- Image Info
-- Grayscale Conversion
-- Binary Conversion
-
-### Affine Transformations
-- Translate
-- Scale
-- Rotate
-- Shear X/Y
-
-### Image Interpolation
-- Nearest Neighbor
-- Bilinear
-- Bicubic
-
-### Histogram Operations
-- Show Histogram
-- Histogram Equalization
-
-### Filters
-- **Low-Pass**: Gaussian, Median
-- **High-Pass**: Laplacian, Sobel, Gradient
+- **Basic**: Grayscale, Binary (auto/manual)
+- **Affine**: Translate, Scale, Rotate, Shear X/Y
+- **Interpolation**: Nearest, Bilinear, Bicubic
+- **Filters**: Gaussian, Median, Laplacian, Sobel, Gradient
+- **Histogram**: View (RGB/Gray), Equalization (RGB/Gray)
+- **Operations**: Crop, Zoom, Flip, Brightness, Contrast
+- **Transform Coding**: Symbol-based, Bit-plane, Block DCT, Predictive, Wavelet (PyWavelets required)
+- **Compression**: Huffman, Golomb-Rice, Arithmetic, LZW, RLE (with correctness check and timing)
 
 ## Usage
 
-1. Upload an image using the sidebar file uploader
-2. Select an operation from the processing tools
-3. View the processed image in the right panel
-4. Save the result using the "Save Result" button
+1. Upload an image.
+2. Choose operations from the tabs.
+3. View the processed result.
+4. Use “Download Processed” to save the current image.
+
+## Development Notes
+
+- Pure processing code lives in `image_processing.py`, `compression.py`, and `transform_coding.py`.
+- Gradio UI wiring and handlers live in `app_gradio.py` and `app_handlers.py`.
+- Shared Gradio CSS/theme lives in `ui_components.py`.
 
 ## Requirements
 
-- Python 3.7+
-- Streamlit >= 1.28.0
-- Pillow >= 10.0.0
-- NumPy >= 1.24.0
+See `requirements.txt` for full dependency versions. Python 3.9+ is recommended.
 
