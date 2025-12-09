@@ -207,13 +207,15 @@ def rotate(image, angle):
     
     Args:
         image: PIL Image object
-        angle: Rotation angle in degrees (positive = counterclockwise)
+        angle: Rotation angle in degrees (positive = clockwise)
         
     Returns:
         Rotated PIL Image object
     """
     if image:
-        return image.rotate(angle, expand=True, fillcolor=(0, 0, 0))
+        # Calculate the equivalent counter-clockwise angle (360 - angle) for clockwise rotation
+        ccw_angle = (360 - angle) % 360
+        return image.rotate(ccw_angle, expand=True, fillcolor=(0, 0, 0))
     return None
 
 
