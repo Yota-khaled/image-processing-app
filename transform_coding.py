@@ -8,12 +8,94 @@ from typing import Tuple, Dict, List
 from scipy.fft import dct, idct
 from scipy import signal
 
+
+
 try:
     import pywt
     HAS_PYWT = True
 except ImportError:
     HAS_PYWT = False
     pywt = None
+
+
+def visualize_predictive_error(errors):
+    """
+    Visualize predictive coding errors.
+    Maps error range [-255, 255] to [0, 255] for display.
+    Zero error becomes mid-gray (128).
+    """
+    # Scale errors to 0-255 range centered at 128
+    # errors are typically small, so we might want to amplify them for visibility
+    # For now, let's just shift them: 0 -> 128.
+    vis = (errors / 2) + 128
+    return np.clip(vis, 0, 255).astype(np.uint8)
+
+def visualize_wavelet_coeffs(coeffs):
+    """
+    Visualize wavelet coefficients as a mosaic image.
+    """
+    if not isinstance(coeffs, list) or len(coeffs) == 0:
+        return None
+    
+    # coeffs[0] is cA (Approximation)
+    # coeffs[i] is (cH, cV, cD) for level i
+    
+    def normalize(arr):
+        # Normalize to 0-255 for visualization
+        arr_min, arr_max = arr.min(), arr.max()
+        if arr_max - arr_min == 0:
+            return np.zeros_like(arr, dtype=np.uint8)
+        return (255 * (arr - arr_min) / (arr_max - arr_min)).astype(np.uint8)
+
+    cA = coeffs[0]
+    
+    # Start with the approximation
+    full_image = normalize(cA)
+    
+    # Iteratively add details
+    # coeffs list is [cA, (cH1, cV1, cD1), (cH2, cV2, cD2), ...]
+    # where index 1 is the coarsest level (closest to cA) and last index is finest level
+    
+    for i in range(1, len(coeffs)):
+        cH, cV, cD = coeffs[i]
+        
+        # Normalize details
+        cH_vis = normalize(cH)
+        cV_vis = normalize(cV)
+        cD_vis = normalize(cD)
+        
+        # Resize current full_image to match dimensions if needed (usually it matches the quadrant size)
+        # In standard wavelet composition:
+        #  _______
+        # | cA| cH|
+        # |---|---|
+        # | cV| cD|
+        #  -------
+        
+        h, w = cA.shape
+        # The detail coeffs at this level should be roughly same size as the PREVIOUS level's combined image
+        # Actually, for standard decomposition:
+        # Level N decomposition recursively decomposes cA.
+        # So we rebuild from small to large or just place them.
+        
+        # Let's simplify: pywt.waverec2 can reconstruct, but we want to SHOW the coeffs.
+        # We can form a large mosaic.
+        
+        top = np.hstack((full_image, cH_vis))
+        bot = np.hstack((cV_vis, cD_vis))
+        full_image = np.vstack((top, bot))
+        
+        # Update cA for next iteration (logically, full_image is the new 'approx' for the next finer level)
+        cA = full_image # This logic works if we traverse from coarse to fine?
+        # Wait, pywt.wavedec2 returns [cA_n, (cH_n, cV_n, cD_n), ..., (cH_1, cV_1, cD_1)]
+        # Index 1 is LEVEL n (coarse details).
+        # Last Index is LEVEL 1 (fine details).
+        
+        # So we are building up correctly from n down to 1?
+        # No, we start with cA_n. We combine with (cH_n, cV_n, cD_n) to make the Level n-1 approximation block.
+    
+    return full_image.astype(np.uint8)
+
 
 
 # -------------------------

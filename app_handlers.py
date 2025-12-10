@@ -244,16 +244,20 @@ def handle_dct(block_size, source):
     return pil_to_numpy(result), f"DCT block (size={int(block_size)}) applied"
 
 
+
 def handle_predictive(predictor, source):
     img = _get_image_by_source(source)
     if img is None:
         return None, "No image available"
     arr = np.array(img.convert("L"))
     errors = transform_coding.predictive_encode(arr, predictor)
-    reconstructed = transform_coding.predictive_decode(errors, predictor)
-    result = Image.fromarray(reconstructed, mode="L").convert("RGB")
+    
+    # VISUALIZE: Show errors instead of reconstruction
+    vis_image = transform_coding.visualize_predictive_error(errors)
+    
+    result = Image.fromarray(vis_image, mode="L").convert("RGB")
     global_state['current_processed_pil'] = result
-    return pil_to_numpy(result), f"Predictive ({predictor}) applied"
+    return pil_to_numpy(result), f"Predictive ({predictor}) Errors (128=Zero)"
 
 
 def handle_wavelet(wavelet, level, source):
@@ -264,10 +268,16 @@ def handle_wavelet(wavelet, level, source):
         return None, "No image available"
     arr = np.array(img.convert("L"))
     coeffs, orig_shape, wv, lvl = transform_coding.wavelet_encode(arr, wavelet, int(level))
-    reconstructed = transform_coding.wavelet_decode(coeffs, orig_shape, wv, lvl)
-    result = Image.fromarray(reconstructed, mode="L").convert("RGB")
+    
+    # VISUALIZE: Show wavelet coefficients
+    vis_image = transform_coding.visualize_wavelet_coeffs(coeffs)
+    
+    if vis_image is None:
+        return None, "Wavelet visualization failed"
+        
+    result = Image.fromarray(vis_image, mode="L").convert("RGB")
     global_state['current_processed_pil'] = result
-    return pil_to_numpy(result), f"Wavelet ({wavelet}, level {int(level)}) applied"
+    return pil_to_numpy(result), f"Wavelet ({wavelet}, level {int(level)}) Coefficients"
 
 
 def _hist_quality_message(gray_array: np.ndarray) -> str:
