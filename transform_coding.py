@@ -56,6 +56,7 @@ def visualize_wavelet_coeffs(coeffs):
     # coeffs list is [cA, (cH1, cV1, cD1), (cH2, cV2, cD2), ...]
     # where index 1 is the coarsest level (closest to cA) and last index is finest level
     
+
     for i in range(1, len(coeffs)):
         cH, cV, cD = coeffs[i]
         
@@ -64,35 +65,43 @@ def visualize_wavelet_coeffs(coeffs):
         cV_vis = normalize(cV)
         cD_vis = normalize(cD)
         
-        # Resize current full_image to match dimensions if needed (usually it matches the quadrant size)
-        # In standard wavelet composition:
-        #  _______
-        # | cA| cH|
-        # |---|---|
-        # | cV| cD|
-        #  -------
+        # Get target shape from details (they should be consistent within the tuple)
+        h, w = cH_vis.shape
         
-        h, w = cA.shape
-        # The detail coeffs at this level should be roughly same size as the PREVIOUS level's combined image
-        # Actually, for standard decomposition:
-        # Level N decomposition recursively decomposes cA.
-        # So we rebuild from small to large or just place them.
-        
-        # Let's simplify: pywt.waverec2 can reconstruct, but we want to SHOW the coeffs.
-        # We can form a large mosaic.
+        # Resize current full_image (approximation) to match details if needed
+        # This handles cases where different wavelet filters produce slightly different sizes
+        # or when odd dimensions cause rounding differences.
+        if full_image.shape != (h, w):
+            # Using simple scaling (could use cv2.resize or just zoom)
+            # Since we don't want to depend on cv2, and scipy.zoom is heavy...
+            # We can use a simple numpy generic zoom or just PIL if available in this scope?
+            # PIL is not imported in this file. Let's use scipy.ndimage if available or simple slicing/repeating?
+            # Or just use the already imported signal or similar...
+            # Actually, `transform_coding` imports `numpy`.
+            # Let's check imports.
+            
+            # Simple nearest neighbor resize using integer indexing (fast, dependency-free)
+            fh, fw = full_image.shape
+            # Create grid
+            x = np.linspace(0, fw - 1, w)
+            y = np.linspace(0, fh - 1, h)
+            # Round to nearest int
+            xi = np.round(x).astype(int)
+            yi = np.round(y).astype(int)
+            # Index
+            # usage of meshgrid for 2D indexing
+            # full_image[yi[:, None], xi]
+            full_image = full_image[yi[:, None], xi]
+            
         
         top = np.hstack((full_image, cH_vis))
         bot = np.hstack((cV_vis, cD_vis))
         full_image = np.vstack((top, bot))
         
-        # Update cA for next iteration (logically, full_image is the new 'approx' for the next finer level)
-        cA = full_image # This logic works if we traverse from coarse to fine?
-        # Wait, pywt.wavedec2 returns [cA_n, (cH_n, cV_n, cD_n), ..., (cH_1, cV_1, cD_1)]
-        # Index 1 is LEVEL n (coarse details).
-        # Last Index is LEVEL 1 (fine details).
-        
-        # So we are building up correctly from n down to 1?
-        # No, we start with cA_n. We combine with (cH_n, cV_n, cD_n) to make the Level n-1 approximation block.
+        # Update cA... logic is implicit as full_image becomes the approx for next level (if we were going up)
+        # But wait, we are traversing coeffs list.
+        # This logic builds a SINGLE mosaic. 
+        # The result 'top' + 'bot' IS the representation of the image at THIS level (containing all previous coarser levels inside 'full_image').
     
     return full_image.astype(np.uint8)
 
