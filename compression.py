@@ -339,207 +339,422 @@ class ArithmeticModel:
         raise ValueError("Value out of range")
 
 
+# def arithmetic_encode(data):
+#     """
+#     Encode data using Integer Arithmetic Coding.
+#     """
+#     if len(data) == 0:
+#         return b""
+        
+#     model = ArithmeticModel(data)
+#     writer = BitWriter()
+    
+#     # Constants for 32-bit integer arithmetic coding
+#     PRECISION = 32
+#     MAX_VALUE = (1 << PRECISION) - 1
+#     Q1 = (1 << (PRECISION - 2))
+#     Q2 = (1 << (PRECISION - 1))
+#     Q3 = Q1 * 3
+    
+#     low = 0
+#     high = MAX_VALUE
+#     pending_bits = 0
+    
+#     # 1. Write Header: Frequency table for reconstruction
+#     # Format: [Number of Symbols (byte)] [Symbol (byte), Freq (4 bytes)]... [Total Length (4 bytes)]
+#     writer.write_byte(len(model.freq))
+#     for char, count in model.freq.items():
+#         # Handle both str and int data
+#         if isinstance(char, str):
+#             char_val = ord(char)
+#         else:
+#             char_val = int(char)
+#         writer.write_byte(char_val)
+#         writer.write_bits(count, 32)
+    
+#     # Write total items count for decoding loop
+#     writer.write_bits(len(data), 32)
+    
+#     # 2. Encode Symbols
+#     for char in data:
+#         c_low, c_high = model.get_range(char)
+#         range_val = high - low + 1
+        
+#         # Rescale
+#         high = low + (range_val * c_high) // model.total - 1
+#         low = low + (range_val * c_low) // model.total
+        
+#         while True:
+#             if high < Q2:
+#                 writer.write_bit(0)
+#                 writer.write_bits(1, pending_bits) # Write pending 1s
+#                 pending_bits = 0
+#                 low = low << 1
+#                 high = (high << 1) | 1
+#             elif low >= Q2:
+#                 writer.write_bit(1)
+#                 writer.write_bits(0, pending_bits) # Write pending 0s
+#                 pending_bits = 0
+#                 low = (low - Q2) << 1
+#                 high = ((high - Q2) << 1) | 1
+#             elif low >= Q1 and high < Q3:
+#                 pending_bits += 1
+#                 low = (low - Q1) << 1
+#                 high = ((high - Q1) << 1) | 1
+#             else:
+#                 break
+                
+#     # Flush remaining bits
+#     pending_bits += 1
+#     if low < Q1:
+#         writer.write_bit(0)
+#         writer.write_bits(1, pending_bits)
+#     else:
+#         writer.write_bit(1)
+#         writer.write_bits(0, pending_bits)
+        
+#     return writer.get_bytes()
+
+
+# def arithmetic_decode(encoded_bytes):
+#     """
+#     Decode Integer Arithmetic Coding stream.
+#     """
+#     if not encoded_bytes:
+#         return []
+        
+#     reader = BitReader(encoded_bytes)
+    
+#     # 1. Read Header
+#     num_symbols = reader.read_byte()
+#     if num_symbols == 0:
+#         # Special case: 256 symbols if byte wrapped? No, just 0 empty.
+#         # But wait, byte 256 is 0? Let's assume max 255 distinct symbols + 1
+#         # If input was random 256 bytes, num_symbols might need 9 bits or special handling.
+#         # For this exercise, assume < 256 unique symbols or 0 means 256. 
+#         # Actually Counter(bytes) can have 256 keys. read_byte returns 0-255.
+#         # If 0, it likely means 256? Or just empty?
+#         # Let's fix encode side to handle 256 case if needed, but for now standard logic.
+#         pass
+
+#     # Quick fix for num_symbols == 0 meaning 256?
+#     # If len(freq) == 256, byte(256) -> 0.
+#     real_num_symbols = num_symbols if num_symbols > 0 else 256
+    
+#     # Reconstruct frequency table
+#     freq = {}
+#     for _ in range(real_num_symbols):
+#         char_code = reader.read_byte()
+#         count = reader.read_bits(32)
+#         freq[char_code] = count
+        
+#     # Reconstruct data
+#     # Create simple list to pass to Model constructor ?? 
+#     # Or just manual model reconstruction
+#     # We need a dummy data list to init Model or refactor Model.
+#     # Refactoring Model to take freq directly is better.
+    
+#     # Inline Model logic for decoding:
+#     total = sum(freq.values())
+#     cum_freq = {}
+#     cum = 0
+#     # Ensure SAME sorting order as encoder!
+#     sorted_chars = sorted(freq.keys())
+    
+#     # Mapping for reverse lookup
+#     # Need range checking
+    
+#     cum_freq_list = [] # List of (char, low, high)
+#     for char in sorted_chars:
+#         cum_freq_list.append((char, cum, cum + freq[char]))
+#         cum += freq[char]
+        
+#     total_items = reader.read_bits(32)
+    
+#     # Constants
+#     PRECISION = 32
+#     MAX_VALUE = (1 << PRECISION) - 1
+#     Q1 = (1 << (PRECISION - 2))
+#     Q2 = (1 << (PRECISION - 1))
+#     Q3 = Q1 * 3
+    
+#     low = 0
+#     high = MAX_VALUE
+#     value = 0
+    
+#     # Read initial 32 bits into 'value' buffer
+#     for _ in range(PRECISION):
+#         try:
+#             bit = reader.read_bit()
+#         except EOFError:
+#             bit = 0 # Padding
+#         value = (value << 1) | bit
+        
+#     decoded = []
+    
+#     for _ in range(total_items):
+#         range_val = high - low + 1
+#         # scaled_value = ((value - low + 1) * total - 1) // range_val
+#         # Formula derivation:
+#         # target_cum_freq roughly (value - low) / (high - low) * total
+#         scaled_value = ((value - low + 1) * total - 1) // range_val
+        
+#         # Find symbol
+#         char = None
+#         c_low = 0
+#         c_high = 0
+        
+#         for c, l, h in cum_freq_list:
+#             if l <= scaled_value < h:
+#                 char = c
+#                 c_low = l
+#                 c_high = h
+#                 break
+                
+#         decoded.append(char)
+        
+#         high = low + (range_val * c_high) // total - 1
+#         low = low + (range_val * c_low) // total
+        
+#         while True:
+#             if high < Q2:
+#                 # do nothing to low/high ranges that shifts them out? 
+#                 # actually just shift out
+#                 pass 
+#             elif low >= Q2:
+#                 value -= Q2
+#                 low -= Q2
+#                 high -= Q2
+#             elif low >= Q1 and high < Q3:
+#                 value -= Q1
+#                 low -= Q1
+#                 high -= Q1
+#             else:
+#                 break
+            
+#             low = low << 1
+#             high = (high << 1) | 1
+#             try:
+#                 bit = reader.read_bit()
+#             except EOFError:
+#                 bit = 0
+#             value = (value << 1) | bit
+            
+#     return decoded
+
+# -------------------------
+# Arithmetic Coding (fixed, integer implementation)
+# -------------------------
+# Uses 32-bit integer arithmetic, consistent header, and symmetric encode/decode.
+
+CODE_BITS = 32
+MAX_VALUE = (1 << CODE_BITS) - 1
+HALF = 1 << (CODE_BITS - 1)
+QUARTER = HALF >> 1
+THREE_QUARTER = HALF + QUARTER
+
+
+def _to_symbol_sequence(data):
+    """
+    Convert input data to a sequence of integer symbols in [0, 255].
+    - If data is bytes/bytearray: use each byte directly.
+    - If data is str: use ord(char).
+    - Else: assume iterable of ints.
+    """
+    if isinstance(data, (bytes, bytearray)):
+        return [int(b) & 0xFF for b in data]
+    elif isinstance(data, str):
+        return [ord(ch) & 0xFF for ch in data]
+    else:
+        return [int(x) & 0xFF for x in data]
+
+
 def arithmetic_encode(data):
     """
-    Encode data using Integer Arithmetic Coding.
+    Encode data using integer arithmetic coding.
+    Returns: bytes (header + coded bits).
+    Header format:
+        - nsym: 16 bits (number of distinct symbols)
+        - for each symbol:
+            * symbol value: 8 bits
+            * frequency: 32 bits
+        - original length: 32 bits
     """
-    if len(data) == 0:
+    seq = _to_symbol_sequence(data)
+    if not seq:
         return b""
-        
-    model = ArithmeticModel(data)
+
+    # --- build frequency table over 0..255, but only store those that appear ---
+    freq = [0] * 256
+    for s in seq:
+        freq[s] += 1
+
+    symbols = [s for s in range(256) if freq[s] > 0]
+    nsym = len(symbols)
+
+    # cumulative frequencies
+    cum = [0] * (nsym + 1)
+    for i, s in enumerate(symbols):
+        cum[i + 1] = cum[i] + freq[s]
+    total = cum[nsym]
+
+    # map symbol value -> index
+    sym2idx = {s: i for i, s in enumerate(symbols)}
+
     writer = BitWriter()
-    
-    # Constants for 32-bit integer arithmetic coding
-    PRECISION = 32
-    MAX_VALUE = (1 << PRECISION) - 1
-    Q1 = (1 << (PRECISION - 2))
-    Q2 = (1 << (PRECISION - 1))
-    Q3 = Q1 * 3
-    
+
+    # --- header ---
+    # number of symbols (16 bits)
+    writer.write_bits(nsym, 16)
+    # for each symbol: value (8 bits) + freq (32 bits)
+    for s in symbols:
+        writer.write_bits(s, 8)
+        writer.write_bits(freq[s], 32)
+    # original length (32 bits)
+    writer.write_bits(len(seq), 32)
+
+    # --- arithmetic encoding ---
     low = 0
     high = MAX_VALUE
-    pending_bits = 0
-    
-    # 1. Write Header: Frequency table for reconstruction
-    # Format: [Number of Symbols (byte)] [Symbol (byte), Freq (4 bytes)]... [Total Length (4 bytes)]
-    writer.write_byte(len(model.freq))
-    for char, count in model.freq.items():
-        # Handle both str and int data
-        if isinstance(char, str):
-            char_val = ord(char)
-        else:
-            char_val = int(char)
-        writer.write_byte(char_val)
-        writer.write_bits(count, 32)
-    
-    # Write total items count for decoding loop
-    writer.write_bits(len(data), 32)
-    
-    # 2. Encode Symbols
-    for char in data:
-        c_low, c_high = model.get_range(char)
-        range_val = high - low + 1
-        
-        # Rescale
-        high = low + (range_val * c_high) // model.total - 1
-        low = low + (range_val * c_low) // model.total
-        
+    pending = 0
+
+    for s in seq:
+        idx = sym2idx[s]
+        low_count = cum[idx]
+        high_count = cum[idx + 1]
+
+        rng = (high - low) + 1
+        high = low + (rng * high_count // total) - 1
+        low = low + (rng * low_count // total)
+
+        # renormalization
         while True:
-            if high < Q2:
+            if high < HALF:
+                # emit 0 and pending 1s
                 writer.write_bit(0)
-                writer.write_bits(1, pending_bits) # Write pending 1s
-                pending_bits = 0
-                low = low << 1
-                high = (high << 1) | 1
-            elif low >= Q2:
+                for _ in range(pending):
+                    writer.write_bit(1)
+                pending = 0
+                low = (low << 1) & MAX_VALUE
+                high = ((high << 1) & MAX_VALUE) | 1
+            elif low >= HALF:
+                # emit 1 and pending 0s
                 writer.write_bit(1)
-                writer.write_bits(0, pending_bits) # Write pending 0s
-                pending_bits = 0
-                low = (low - Q2) << 1
-                high = ((high - Q2) << 1) | 1
-            elif low >= Q1 and high < Q3:
-                pending_bits += 1
-                low = (low - Q1) << 1
-                high = ((high - Q1) << 1) | 1
+                for _ in range(pending):
+                    writer.write_bit(0)
+                pending = 0
+                low = ((low - HALF) << 1) & MAX_VALUE
+                high = (((high - HALF) << 1) & MAX_VALUE) | 1
+            elif low >= QUARTER and high < THREE_QUARTER:
+                # underflow region
+                pending += 1
+                low = ((low - QUARTER) << 1) & MAX_VALUE
+                high = (((high - QUARTER) << 1) & MAX_VALUE) | 1
             else:
                 break
-                
-    # Flush remaining bits
-    pending_bits += 1
-    if low < Q1:
+
+    # finalization: output one more bit + pending ones
+    pending += 1
+    if low < QUARTER:
         writer.write_bit(0)
-        writer.write_bits(1, pending_bits)
+        for _ in range(pending):
+            writer.write_bit(1)
     else:
         writer.write_bit(1)
-        writer.write_bits(0, pending_bits)
-        
+        for _ in range(pending):
+            writer.write_bit(0)
+
     return writer.get_bytes()
 
 
 def arithmetic_decode(encoded_bytes):
     """
-    Decode Integer Arithmetic Coding stream.
+    Decode integer arithmetic coded stream created by arithmetic_encode.
+    Returns: list of integer symbols (0..255).
+    Caller is responsible for converting to bytes or string if needed.
     """
     if not encoded_bytes:
         return []
-        
-    reader = BitReader(encoded_bytes)
-    
-    # 1. Read Header
-    num_symbols = reader.read_byte()
-    if num_symbols == 0:
-        # Special case: 256 symbols if byte wrapped? No, just 0 empty.
-        # But wait, byte 256 is 0? Let's assume max 255 distinct symbols + 1
-        # If input was random 256 bytes, num_symbols might need 9 bits or special handling.
-        # For this exercise, assume < 256 unique symbols or 0 means 256. 
-        # Actually Counter(bytes) can have 256 keys. read_byte returns 0-255.
-        # If 0, it likely means 256? Or just empty?
-        # Let's fix encode side to handle 256 case if needed, but for now standard logic.
-        pass
 
-    # Quick fix for num_symbols == 0 meaning 256?
-    # If len(freq) == 256, byte(256) -> 0.
-    real_num_symbols = num_symbols if num_symbols > 0 else 256
-    
-    # Reconstruct frequency table
-    freq = {}
-    for _ in range(real_num_symbols):
-        char_code = reader.read_byte()
-        count = reader.read_bits(32)
-        freq[char_code] = count
-        
-    # Reconstruct data
-    # Create simple list to pass to Model constructor ?? 
-    # Or just manual model reconstruction
-    # We need a dummy data list to init Model or refactor Model.
-    # Refactoring Model to take freq directly is better.
-    
-    # Inline Model logic for decoding:
-    total = sum(freq.values())
-    cum_freq = {}
-    cum = 0
-    # Ensure SAME sorting order as encoder!
-    sorted_chars = sorted(freq.keys())
-    
-    # Mapping for reverse lookup
-    # Need range checking
-    
-    cum_freq_list = [] # List of (char, low, high)
-    for char in sorted_chars:
-        cum_freq_list.append((char, cum, cum + freq[char]))
-        cum += freq[char]
-        
-    total_items = reader.read_bits(32)
-    
-    # Constants
-    PRECISION = 32
-    MAX_VALUE = (1 << PRECISION) - 1
-    Q1 = (1 << (PRECISION - 2))
-    Q2 = (1 << (PRECISION - 1))
-    Q3 = Q1 * 3
-    
+    reader = BitReader(encoded_bytes)
+
+    # --- read header ---
+    nsym = reader.read_bits(16)
+    if nsym <= 0 or nsym > 256:
+        raise ValueError(f"Invalid number of symbols in header: {nsym}")
+
+    symbols = []
+    freq = []
+    for _ in range(nsym):
+        s = reader.read_bits(8)
+        f = reader.read_bits(32)
+        symbols.append(s)
+        freq.append(f)
+
+    cum = [0] * (nsym + 1)
+    for i, f in enumerate(freq):
+        cum[i + 1] = cum[i] + f
+    total = cum[nsym]
+
+    length = reader.read_bits(32)
+
+    # --- init arithmetic decoder ---
     low = 0
     high = MAX_VALUE
     value = 0
-    
-    # Read initial 32 bits into 'value' buffer
-    for _ in range(PRECISION):
+    for _ in range(CODE_BITS):
         try:
             bit = reader.read_bit()
         except EOFError:
-            bit = 0 # Padding
-        value = (value << 1) | bit
-        
+            bit = 0
+        value = ((value << 1) & MAX_VALUE) | bit
+
     decoded = []
-    
-    for _ in range(total_items):
-        range_val = high - low + 1
-        # scaled_value = ((value - low + 1) * total - 1) // range_val
-        # Formula derivation:
-        # target_cum_freq roughly (value - low) / (high - low) * total
-        scaled_value = ((value - low + 1) * total - 1) // range_val
-        
-        # Find symbol
-        char = None
-        c_low = 0
-        c_high = 0
-        
-        for c, l, h in cum_freq_list:
-            if l <= scaled_value < h:
-                char = c
-                c_low = l
-                c_high = h
+
+    for _ in range(length):
+        rng = (high - low) + 1
+        scaled = ((value - low + 1) * total - 1) // rng
+
+        # find symbol index by scanning cum (at most 256, so linear is OK)
+        idx = 0
+        for i in range(nsym):
+            if cum[i + 1] > scaled:
+                idx = i
                 break
-                
-        decoded.append(char)
-        
-        high = low + (range_val * c_high) // total - 1
-        low = low + (range_val * c_low) // total
-        
+
+        s = symbols[idx]
+        decoded.append(s)
+
+        low_count = cum[idx]
+        high_count = cum[idx + 1]
+
+        high = low + (rng * high_count // total) - 1
+        low = low + (rng * low_count // total)
+
+        # renormalization
         while True:
-            if high < Q2:
-                # do nothing to low/high ranges that shifts them out? 
-                # actually just shift out
-                pass 
-            elif low >= Q2:
-                value -= Q2
-                low -= Q2
-                high -= Q2
-            elif low >= Q1 and high < Q3:
-                value -= Q1
-                low -= Q1
-                high -= Q1
+            if high < HALF:
+                # do nothing special to value, just shift
+                pass
+            elif low >= HALF:
+                low -= HALF
+                high -= HALF
+                value -= HALF
+            elif low >= QUARTER and high < THREE_QUARTER:
+                low -= QUARTER
+                high -= QUARTER
+                value -= QUARTER
             else:
                 break
-            
-            low = low << 1
-            high = (high << 1) | 1
+
+            low = (low << 1) & MAX_VALUE
+            high = ((high << 1) & MAX_VALUE) | 1
             try:
                 bit = reader.read_bit()
             except EOFError:
                 bit = 0
-            value = (value << 1) | bit
-            
+            value = ((value << 1) & MAX_VALUE) | bit
+
     return decoded
 
 

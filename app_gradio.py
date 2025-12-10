@@ -46,7 +46,7 @@ from app_handlers import (
 
 def create_gradio_app():
     # Use Blocks without css arg (not supported), inject CSS manually
-    with gr.Blocks(title="Image Processing Application", theme=gr.themes.Soft()) as demo:
+    with gr.Blocks(title="Image Processing Application") as demo:
         gr.HTML(f"<style>{GRADIO_CUSTOM_CSS}</style>")
         # Header
         gr.Markdown("""
@@ -74,7 +74,7 @@ def create_gradio_app():
                         type="numpy",
                         height=400,
                         show_label=False,
-                        show_fullscreen_button=True,
+                        # show_fullscreen_button=True,
                         elem_classes="large-image"
                     )
                 
@@ -243,7 +243,7 @@ def create_gradio_app():
                             type="numpy",
                             height=400,
                             show_label=False,
-                            show_fullscreen_button=True,
+                            # show_fullscreen_button=True,
                             elem_classes="large-image" 
                         )           
 
