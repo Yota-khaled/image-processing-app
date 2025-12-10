@@ -17,6 +17,7 @@ import gradio as gr
 import image_processing as ip
 import compression
 import transform_coding
+##------------------------
 
 # Shared state for Gradio app
 global_state = {
@@ -76,6 +77,42 @@ def apply_operation(operation_func, operation_name, *args, source: str = "proces
         return None, f"Error: {str(e)}"
 
 
+# -------------------------
+# Threshold evaluation helper
+# -------------------------
+def _format_eval_message(method_chosen: str, threshold: float, reason: str, counts: np.ndarray, t_value: int) -> str:
+    """
+    Build a human-readable evaluation message comparing the given threshold
+    against the best possible threshold (by between-class variance).
+    Returns a short multi-line string.
+    """
+    # compute between-class variance at chosen threshold
+    bv_at_t = float(ip._between_var_from_counts(counts, t_value))
+
+    # compute best possible between-class variance (search argmax)
+    # vectorized search across t = 0..255
+    bvs = np.array([ip._between_var_from_counts(counts, t) for t in range(256)], dtype=np.float64)
+    best_t = int(np.argmax(bvs))
+    best_bv = float(bvs[best_t])
+
+    # avoid division by zero
+    if best_bv > 0:
+        score = bv_at_t / best_bv
+    else:
+        score = 1.0 if bv_at_t == 0 else 0.0
+
+    # verdict thresholds: >=0.98 considered near-optimal
+    verdict = "Optimal ✅" if score >= 0.98 else "Not optimal ⚠️"
+
+    detail = (
+        f"Method: {method_chosen}  |  threshold = {threshold:.1f}\n"
+        f"Verdict: {verdict}\n"
+        f"Between-variance = {bv_at_t:.1f}, best = {best_t} -> {best_bv:.1f} (score={score:.2f})\n"
+        f"Reason: {reason}"
+    )
+    return detail
+
+
 # Basic operations on original image
 def handle_grayscale():
     if global_state['original_pil'] is None:
@@ -92,31 +129,78 @@ def handle_grayscale():
 
 
 def handle_binary_auto():
+    """
+    Apply automatic binary thresholding and return:
+      (processed_image_numpy, status_text, evaluation_text)
+    Uses ip.to_binary_info to decide between average and Otsu, then evaluates
+    the chosen threshold vs the best (by between-class variance).
+    """
     if global_state['original_pil'] is None:
-        return None, "No original image available"
+        return None, "No original image available", "No evaluation (no image)."
     try:
         img = global_state['original_pil'].copy()
-        result = ip.to_binary(img)
-        if result is None:
-            return None, "Binary operation failed"
-        global_state['current_processed_pil'] = result
-        return pil_to_numpy(result), "Binary (Auto) applied to original image"
+
+        # Use to_binary_info to get the chosen method, threshold, and reason
+        bin_img, thresh, chosen_method, reason = ip.to_binary_info(img, method='auto')
+
+        # compute histogram counts for evaluation
+        gray_arr = np.array(img.convert('L'), dtype=np.uint8)
+        counts, _ = np.histogram(gray_arr.ravel(), bins=256, range=(0, 256))
+
+        t_value = int(round(thresh))
+        eval_msg = _format_eval_message(chosen_method, thresh, reason, counts, t_value)
+
+        # update state and return numpy image for Gradio
+        global_state['current_processed_pil'] = bin_img
+        proc_np = pil_to_numpy(bin_img)
+
+        status = f"Binary (auto -> {chosen_method}, t={thresh:.1f}) applied"
+        return proc_np, status, eval_msg
     except Exception as e:
-        return None, f"Error: {str(e)}"
+        return None, f"Error: {str(e)}", f"Error during evaluation: {str(e)}"
 
 
 def handle_binary_manual(threshold):
+    """
+    Apply manual binary threshold and evaluate it.
+    Returns: (processed_image_numpy, status_text, evaluation_text)
+    """
     if global_state['original_pil'] is None:
-        return None, "No original image available"
+        return None, "No original image available", "No evaluation (no image)."
     try:
         img = global_state['original_pil'].copy()
-        result = ip.to_binary(img, threshold)
-        if result is None:
-            return None, "Binary operation failed"
-        global_state['current_processed_pil'] = result
-        return pil_to_numpy(result), f"Binary (Thresh={threshold}) applied to original image"
+
+        # apply binary using provided threshold
+        bin_img = ip.to_binary(img, threshold)
+
+        # compute histogram counts for evaluation
+        gray_arr = np.array(img.convert('L'), dtype=np.uint8)
+        counts, _ = np.histogram(gray_arr.ravel(), bins=256, range=(0, 256))
+
+        t_user = int(max(0, min(255, int(round(threshold)))))
+        bv_user = float(ip._between_var_from_counts(counts, t_user))
+
+        # compute best threshold (by between-class variance)
+        bvs = np.array([ip._between_var_from_counts(counts, t) for t in range(256)], dtype=np.float64)
+        best_t = int(np.argmax(bvs))
+        best_bv = float(bvs[best_t])
+
+        if best_bv > 0:
+            score = bv_user / best_bv
+        else:
+            score = 1.0 if bv_user == 0 else 0.0
+
+        verdict = "Optimal ✅" if score >= 0.98 else "Not optimal ⚠️"
+        reason = f"bv_user={bv_user:.1f}, best={best_t} -> {best_bv:.1f}, score={score:.2f}"
+        eval_msg = f"Manual threshold = {t_user}. {verdict}\n{reason}"
+
+        # update state and return
+        global_state['current_processed_pil'] = bin_img
+        proc_np = pil_to_numpy(bin_img)
+        status = f"Binary (manual t={t_user}) applied"
+        return proc_np, status, eval_msg
     except Exception as e:
-        return None, f"Error: {str(e)}"
+        return None, f"Error: {str(e)}", f"Error during evaluation: {str(e)}"
 
 
 # Affine, interpolation, filters, histogram, operations
