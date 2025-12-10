@@ -46,7 +46,7 @@ from app_handlers import (
 
 def create_gradio_app():
     # Use Blocks without css arg (not supported), inject CSS manually
-    with gr.Blocks(title="Image Processing Application", theme=gr.themes.Soft()) as demo:
+    with gr.Blocks(title="Image Processing Application") as demo:
         gr.HTML(f"<style>{GRADIO_CUSTOM_CSS}</style>")
         # Header
         gr.Markdown("""
@@ -121,6 +121,7 @@ def create_gradio_app():
                             label="Threshold Evaluation",
                             interactive=False,
                             lines=3,
+                            visible=False,
                             value="Threshold evaluation will appear here"
                         )
                     
@@ -277,12 +278,20 @@ def create_gradio_app():
             handle_binary_auto,
             inputs=[],
             outputs=[processed_display, status_text, threshold_eval_box]
+        ).then(
+            lambda: gr.update(visible=True),
+            None,
+            threshold_eval_box
         )
         
         binary_manual_btn.click(
             handle_binary_manual,
             inputs=[binary_threshold],
             outputs=[processed_display, status_text, threshold_eval_box]
+        ).then(
+            lambda: gr.update(visible=True),
+            None,
+            threshold_eval_box
         )
         
         # Affine transformations
