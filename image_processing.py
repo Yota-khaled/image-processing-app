@@ -481,16 +481,23 @@ def laplacian_filter(image):
         return None
     
     try:
+        # Converts a PIL image to grayscale
         gray = image.convert("L")
+        
         img_array = np.array(gray, dtype=np.float64)
         laplacian_result = laplace(img_array)
-        # Normalize to 0-255
+        
+        # To keep all edges visible
         laplacian_result = np.abs(laplacian_result)
+        
+        # Normalize to 0-255
         if laplacian_result.max() > 0:
             laplacian_result = (laplacian_result / laplacian_result.max() * 255).astype(np.uint8)
         else:
             laplacian_result = laplacian_result.astype(np.uint8)
+
         return Image.fromarray(laplacian_result, mode='L').convert("RGB")
+        
     except Exception:
         return image.convert("RGB")
 
@@ -509,21 +516,26 @@ def sobel_filter(image):
         return None
     
     try:
+        # Converts a PIL image to grayscale
         gray = image.convert("L")
-        img_array = np.array(gray, dtype=np.float64)
         
         # Apply Sobel filters
-        sobel_x = sobel(img_array, axis=1)
-        sobel_y = sobel(img_array, axis=0)
+        img_array = np.array(gray, dtype=np.float64)
+        
+        sobel_x = sobel(img_array, axis=1) # Vertical Edges
+        sobel_y = sobel(img_array, axis=0) # Horizontal Edges
         
         # Combine
         sobel_result = np.sqrt(sobel_x**2 + sobel_y**2)
+        
+        # Normalize to 0-255
         if sobel_result.max() > 0:
             sobel_result = (sobel_result / sobel_result.max() * 255).astype(np.uint8)
         else:
             sobel_result = sobel_result.astype(np.uint8)
         
         return Image.fromarray(sobel_result, mode='L').convert("RGB")
+
     except Exception:
         return image.convert("RGB")
 
@@ -542,21 +554,25 @@ def gradient_filter(image):
         return None
     
     try:
+        # Converts a PIL image to grayscale
         gray = image.convert("L")
-        img_array = np.array(gray, dtype=np.float64)
         
         # Calculate gradients
+        img_array = np.array(gray, dtype=np.float64)
+        
         grad_x = np.gradient(img_array, axis=1)
         grad_y = np.gradient(img_array, axis=0)
         
         # Combine
         gradient_result = np.sqrt(grad_x**2 + grad_y**2)
+        
         if gradient_result.max() > 0:
             gradient_result = (gradient_result / gradient_result.max() * 255).astype(np.uint8)
         else:
             gradient_result = gradient_result.astype(np.uint8)
         
         return Image.fromarray(gradient_result, mode='L').convert("RGB")
+        
     except Exception:
         return image.convert("RGB")
 
