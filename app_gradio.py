@@ -46,7 +46,7 @@ from app_handlers import (
 
 def create_gradio_app():
     # Use Blocks without css arg (not supported), inject CSS manually
-    with gr.Blocks(title="Image Processing Application") as demo:
+    with gr.Blocks(title="Image Processing Application", theme=gr.themes.Soft()) as demo:
         gr.HTML(f"<style>{GRADIO_CUSTOM_CSS}</style>")
         # Header
         gr.Markdown("""
@@ -54,7 +54,7 @@ def create_gradio_app():
             <h1>Image Processing Application</h1>
         </div>
         """)
-        
+
         with gr.Row():
             # ===== LEFT COLUMN: UPLOAD AND ORIGINAL IMAGE =====
             with gr.Column(scale=2):
