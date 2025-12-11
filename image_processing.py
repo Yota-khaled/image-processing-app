@@ -66,7 +66,7 @@ def to_grayscale(image: Image.Image) -> Image.Image:
 
     arr = np.array(image.convert('RGB'), dtype=np.float32)
     r, g, b = arr[..., 0], arr[..., 1], arr[..., 2]
-    gray = 0.2126 * r + 0.7152 * g + 0.0722 * b
+    gray = 0.299 * r + 0.587 * g + 0.114 * b
     gray = np.clip(gray, 0, 255).astype(np.uint8)
     # Return RGB image so UI that expects 3 channels doesn't break
     return Image.fromarray(gray, mode='L').convert("RGB")
@@ -692,4 +692,5 @@ def adjust_contrast(image, factor):
         enhancer = ImageEnhance.Contrast(image)
         return enhancer.enhance(enhance_factor)
     return None
+
 
