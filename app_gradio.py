@@ -473,7 +473,7 @@ def create_gradio_app():
         reset_btn.click(
             reset_all,
             inputs=[],
-            outputs=[image_input, original_display, processed_display, image_info, status_text, download_file]
+            outputs=[image_input, original_display, processed_display, image_info, status_text, download_file , threshold_eval_box]
         )
         
         download_btn.click(
