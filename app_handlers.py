@@ -514,5 +514,6 @@ def reset_all():
         None,  # processed_display
         "Upload an image to see information",  # image_info
         "Application reset. Upload an image to begin",  # status_text
-        gr.update(value=None, visible=False)   # download_file
+        gr.update(value=None, visible=False),   # download_file
+        gr.update(value="", visible=False)     # threshold_eval_box 
     )
